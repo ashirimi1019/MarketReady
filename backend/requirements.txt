@@ -1,0 +1,11 @@
+﻿fastapi
+uvicorn
+sqlalchemy
+pydantic
+pydantic-settings
+psycopg2-binary
+python-multipart
+alembic
+boto3
+httpx
+pytest
