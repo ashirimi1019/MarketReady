@@ -1,9 +1,9 @@
 "use client";
 
 import { useSession } from "@/lib/session";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { API_BASE, apiSend } from "@/lib/api";
+import { apiSend } from "@/lib/api";
 import { formatDisplayName } from "@/lib/name";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useRouter } from "next/navigation";
@@ -12,19 +12,7 @@ export default function NavBar() {
   const { username, isLoggedIn, logout, refreshToken } = useSession();
   const displayName = formatDisplayName(username);
   const router = useRouter();
-  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  useEffect(() => {
-    fetch(`${API_BASE}/meta/ai`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) {
-          setAiEnabled(Boolean(data.ai_enabled));
-        }
-      })
-      .catch(() => setAiEnabled(null));
-  }, []);
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -95,9 +83,6 @@ export default function NavBar() {
         <Link href="/student/guide">Guide</Link>
       </nav>
       <div className="nav-auth-meta">
-        <span className="chip">
-          OpenAI {aiEnabled === null ? "Unknown" : aiEnabled ? "On" : "Off"}
-        </span>
         <ThemeToggle />
         <button className="nav-pill nav-pill-muted" onClick={handleLogout} disabled={loggingOut}>
           {loggingOut ? "Logging out..." : "Logout"}
