@@ -211,7 +211,7 @@ export default function Home() {
 
       <section className="panel hero-stage">
         <span className="hero-signal-pill">
-          AI-Powered Verification Engine · Powered by OpenAI
+          AI-Powered Verification Engine - Powered by OpenAI
         </span>
         <h1 className="hero-headline">
           Stop <span className="hero-emphasis">guessing.</span>
@@ -254,10 +254,10 @@ export default function Home() {
       <section className="panel auditor-stage" id="audit-engine">
         <div className="auditor-header">
           <span className="auditor-icon" aria-hidden>
-            ✦
+            *
           </span>
           <div>
-            <h2 className="section-title">AI Market Auditor · Powered by OpenAI</h2>
+            <h2 className="section-title">AI Market Auditor - Powered by OpenAI</h2>
             <p className="section-subtitle">
               Paste resume highlights or project evidence and generate OpenAI-powered direction.
             </p>
