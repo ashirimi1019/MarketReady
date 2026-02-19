@@ -169,26 +169,37 @@ export default function AdminChecklistsPage() {
         </label>
       </div>
       <div className="mt-6 grid gap-4 md:grid-cols-3">
-        <select
-          className="rounded-lg border border-[color:var(--border)] p-3"
-          value={selectedPathway}
-          onChange={(event) => {
-            const value = event.target.value;
-            setSelectedPathway(value);
-            setSelectedVersion("");
-            setItems([]);
-            if (value) {
-              loadVersions(value);
-            }
-          }}
-        >
-          <option value="">Select pathway</option>
-          {pathways.map((pathway) => (
-            <option key={pathway.id} value={pathway.id}>
-              {pathway.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="checklists-pathway-select"
+            className="text-sm text-[color:var(--muted)]"
+          >
+            Pathway
+          </label>
+          <select
+            id="checklists-pathway-select"
+            className="rounded-lg border border-[color:var(--border)] p-3"
+            value={selectedPathway}
+            title="Pathway"
+            aria-label="Pathway"
+            onChange={(event) => {
+              const value = event.target.value;
+              setSelectedPathway(value);
+              setSelectedVersion("");
+              setItems([]);
+              if (value) {
+                loadVersions(value);
+              }
+            }}
+          >
+            <option value="">Select pathway</option>
+            {pathways.map((pathway) => (
+              <option key={pathway.id} value={pathway.id}>
+                {pathway.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <button className="cta" onClick={createDraft}>
           Create Draft
         </button>

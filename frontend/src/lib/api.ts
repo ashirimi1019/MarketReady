@@ -1,3 +1,7 @@
+import { ApiError } from "./errors";
+
+export { ApiError } from "./errors";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -66,7 +70,8 @@ export async function apiGet<T>(path: string, headers?: HeadersInit): Promise<T>
     }
   }
   if (!res.ok) {
-    throw new Error(`API error ${res.status}`);
+    const body = await res.text();
+    throw new ApiError(res.status, body);
   }
   return res.json() as Promise<T>;
 }
@@ -89,8 +94,8 @@ export async function apiSend<T>(
     }
   }
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
+    const body = await res.text();
+    throw new ApiError(res.status, body);
   }
   return res.json() as Promise<T>;
 }

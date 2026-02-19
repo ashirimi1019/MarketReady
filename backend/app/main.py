@@ -15,8 +15,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "X-Auth-Token",
+        "X-User-Id",
+        "X-Admin-Token",
+        "X-Request-Id",
+    ],
 )
 
 upload_dir = Path(settings.local_upload_dir)

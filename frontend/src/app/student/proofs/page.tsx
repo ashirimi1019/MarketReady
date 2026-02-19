@@ -3,22 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, API_BASE } from "@/lib/api";
 import { useSession } from "@/lib/session";
-
-type Proof = {
-  id: string;
-  checklist_item_id: string;
-  proof_type: string;
-  url: string;
-  view_url?: string | null;
-  status: string;
-  review_note?: string | null;
-  created_at: string;
-};
-
-type ChecklistItem = {
-  id: string;
-  title: string;
-};
+import type { Proof, ChecklistItem } from "@/types/api";
 
 export default function StudentProofsPage() {
   const { username, isLoggedIn } = useSession();

@@ -25,22 +25,25 @@ export default function NavBar() {
 
   if (!isLoggedIn) {
     return (
-      <header className="nav nav-guest">
-        <div className="nav-left-cluster">
+      <header className="nav nav-shell">
+        <div className="nav-brand-stack">
           <Link href="/" className="brand-pill">
             Market Ready
           </Link>
-          <span className="nav-tagline">
-            Proof-based career readiness
-          </span>
+          <span className="nav-tagline">Proof-first career acceleration</span>
         </div>
-        <div className="nav-links">
-          <Link href="/">Home</Link>
-          <Link href="/#student-flow">Student Flow</Link>
-          <Link href="/login">Login</Link>
-          <Link href="/register">Register</Link>
-        </div>
-        <div className="nav-auth-meta">
+        <nav className="nav-links nav-links-main">
+          <Link href="/#audit-engine">Audit</Link>
+          <Link href="/#signals">Signals</Link>
+          <Link href="/student/onboarding">Portal</Link>
+        </nav>
+        <div className="nav-auth-meta nav-auth-meta-guest">
+          <Link className="nav-pill nav-pill-muted" href="/login">
+            Login
+          </Link>
+          <Link className="nav-pill nav-pill-muted" href="/register">
+            Register
+          </Link>
           <ThemeToggle />
         </div>
       </header>
@@ -48,45 +51,27 @@ export default function NavBar() {
   }
 
   return (
-    <header className="nav nav-auth">
-      <div className="nav-auth-left">
-        <div className="badge">Student Command</div>
-        <div className="nav-auth-title">Welcome, {displayName}</div>
-        <div className="nav-auth-sub">
-          Your personalized readiness hub and proof tracker.
-        </div>
+    <header className="nav nav-shell nav-shell-auth">
+      <div className="nav-brand-stack">
+        <Link href="/" className="brand-pill">
+          Market Ready
+        </Link>
+        <span className="nav-tagline">Signed in as {displayName}</span>
       </div>
-      <div className="nav-auth-actions">
-        <Link className="nav-pill" href="/student/onboarding">
-          My Pathway
-        </Link>
-        <Link className="nav-pill" href="/student/profile">
-          Profile
-        </Link>
-        <Link className="nav-pill" href="/student/checklist">
-          Submit Proof
-        </Link>
-        <Link className="nav-pill" href="/student/proofs">
-          My Proofs
-        </Link>
-        <Link className="nav-pill" href="/student/guide">
-          AI Guide
-        </Link>
-        <Link className="nav-pill" href="/student/engagement">
-          Goals
-        </Link>
-        <Link className="nav-pill" href="/student/readiness">
-          Readiness Score
-        </Link>
-        <Link className="nav-pill" href="/student/timeline">
-          Timeline
-        </Link>
-      </div>
+      <nav className="nav-links nav-links-main">
+        <Link href="/student/checklist">Audit</Link>
+        <Link href="/student/readiness">Signals</Link>
+        <Link href="/student/onboarding">Portal</Link>
+        <Link href="/student/proofs">Vault</Link>
+        <Link href="/student/interview">Interview</Link>
+        <Link href="/student/resume-architect">Resume AI</Link>
+        <Link href="/student/guide">Guide</Link>
+      </nav>
       <div className="nav-auth-meta">
-        <ThemeToggle />
         <span className="chip">
           AI {aiEnabled === null ? "Unknown" : aiEnabled ? "On" : "Off"}
         </span>
+        <ThemeToggle />
         <Link className="nav-pill nav-pill-muted" href="/logout">
           Logout
         </Link>

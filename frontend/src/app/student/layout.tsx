@@ -1,13 +1,14 @@
 "use client";
 
 import { useSession } from "@/lib/session";
+import Link from "next/link";
 
 export default function StudentLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { username, isLoggedIn } = useSession();
+  const { isLoggedIn } = useSession();
 
   return (
     <div className="page-shell">
@@ -17,9 +18,9 @@ export default function StudentLayout({
             <span className="badge">Student Portal</span>
             <h1 className="text-3xl font-semibold">Your Pathway</h1>
             <nav className="flex flex-wrap gap-3 text-sm text-[color:var(--muted)]">
-              <a href="/login">Login</a>
-              <a href="/">Home</a>
-              <a href="/#student-flow">How it works</a>
+              <Link href="/login">Login</Link>
+              <Link href="/">Home</Link>
+              <Link href="/#student-flow">How it works</Link>
             </nav>
           </header>
           <div className="divider" />

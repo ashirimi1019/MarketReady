@@ -35,8 +35,7 @@ export default function ThemeToggle() {
       onClick={() => setTheme(nextTheme)}
     >
       <span className="theme-indicator" aria-hidden />
-      {currentTheme === "dark" ? "Dark" : "Light"}
+      {nextTheme === "light" ? "Light" : "Dark"}
     </button>
   );
 }
-

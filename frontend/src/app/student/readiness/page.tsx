@@ -3,28 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
 import { useSession } from "@/lib/session";
-
-type Readiness = {
-  score: number;
-  band: string;
-  capped: boolean;
-  cap_reason?: string | null;
-  next_actions: string[];
-  top_gaps: string[];
-};
-
-type ChecklistItem = {
-  id: string;
-  title: string;
-};
-
-type AiGuide = {
-  decision?: string | null;
-  recommendations?: string[];
-  priority_focus_areas?: string[];
-  weekly_plan?: string[];
-  uncertainty?: string | null;
-};
+import type {
+  Readiness,
+  ChecklistItem,
+  AiGuide,
+  ReadinessRank,
+  WeeklyMilestoneStreak,
+} from "@/types/api";
 
 export default function StudentReadinessPage() {
   const { username, isLoggedIn } = useSession();
@@ -33,6 +18,9 @@ export default function StudentReadinessPage() {
   const [guide, setGuide] = useState<AiGuide | null>(null);
   const [guideLoading, setGuideLoading] = useState(false);
   const [guideError, setGuideError] = useState<string | null>(null);
+  const [rank, setRank] = useState<ReadinessRank | null>(null);
+  const [streak, setStreak] = useState<WeeklyMilestoneStreak | null>(null);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   const headers = useMemo(() => ({ "X-User-Id": username }), [username]);
 
@@ -41,6 +29,20 @@ export default function StudentReadinessPage() {
     apiGet<Readiness>("/user/readiness", headers)
       .then(setReadiness)
       .catch(() => setReadiness(null));
+  }, [headers, isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    apiGet<ReadinessRank>("/user/readiness/rank", headers)
+      .then(setRank)
+      .catch(() => setRank(null));
+  }, [headers, isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    apiGet<WeeklyMilestoneStreak>("/user/streak", headers)
+      .then(setStreak)
+      .catch(() => setStreak(null));
   }, [headers, isLoggedIn]);
 
   const generateGuide = async () => {
@@ -85,7 +87,21 @@ export default function StudentReadinessPage() {
     setGuide(null);
     setGuideError(null);
     setGuideLoading(false);
+    setRank(null);
+    setStreak(null);
+    setShareStatus(null);
   }, [isLoggedIn]);
+
+  const copyShareText = async () => {
+    if (!rank) return;
+    setShareStatus(null);
+    try {
+      await navigator.clipboard.writeText(rank.linkedin_share_text);
+      setShareStatus("Share text copied.");
+    } catch {
+      setShareStatus("Could not copy share text.");
+    }
+  };
 
   return (
     <section className="panel">
@@ -117,6 +133,61 @@ export default function StudentReadinessPage() {
             {readiness?.cap_reason ?? "None"}
           </p>
         </div>
+      </div>
+      <div className="mt-5 grid gap-5 md:grid-cols-3">
+        <div className="rounded-2xl border border-[color:var(--border)] p-6">
+          <p className="text-base text-[color:var(--muted)]">Percentile</p>
+          <p className="mt-2 text-3xl font-semibold">
+            {rank ? `${rank.percentile.toFixed(1)}%` : "--"}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[color:var(--border)] p-6">
+          <p className="text-base text-[color:var(--muted)]">Global Rank</p>
+          <p className="mt-2 text-3xl font-semibold">
+            {rank ? `#${rank.rank}` : "--"}
+          </p>
+          <p className="mt-1 text-sm text-[color:var(--muted)]">
+            {rank ? `of ${rank.total_students} students` : ""}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[color:var(--border)] p-6">
+          <p className="text-base text-[color:var(--muted)]">Milestone Streak</p>
+          <p className="mt-2 text-3xl font-semibold">
+            {streak ? `${streak.current_streak_weeks}w` : "--"}
+          </p>
+          <p className="mt-1 text-sm text-[color:var(--muted)]">
+            longest {streak?.longest_streak_weeks ?? 0}w
+          </p>
+        </div>
+      </div>
+      <div className="mt-5 rounded-xl border border-[color:var(--border)] p-4">
+        <h3 className="text-lg font-semibold">Share On LinkedIn</h3>
+        <p className="mt-2 text-sm text-[color:var(--muted)]">
+          Share your readiness percentile like a career credit score.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <button className="cta cta-secondary" onClick={copyShareText} disabled={!rank}>
+            Copy Share Text
+          </button>
+          {rank && (
+            <a
+              className="cta cta-secondary"
+              href={rank.linkedin_share_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open LinkedIn Share
+            </a>
+          )}
+        </div>
+        {rank && (
+          <p className="mt-3 text-sm text-[color:var(--muted)]">
+            {rank.linkedin_share_text}
+          </p>
+        )}
+        {shareStatus && (
+          <p className="mt-2 text-sm text-[color:var(--muted)]">{shareStatus}</p>
+        )}
       </div>
       <div className="mt-8">
         <h3 className="text-2xl font-semibold">Next Actions</h3>

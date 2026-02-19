@@ -15,8 +15,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Market Pathways",
-  description: "Proof-based career pathway platform",
+  title: "Market Ready",
+  description: "Proof-first career acceleration with AI market signals",
 };
 
 export default function RootLayout({

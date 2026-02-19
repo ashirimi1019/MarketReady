@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSession } from "@/lib/session";
@@ -21,19 +21,19 @@ export default function AdminSkillsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState({ name: "", description: "" });
 
-  const headers = { "X-Admin-Token": adminToken };
+  const headers = useMemo(() => ({ "X-Admin-Token": adminToken }), [adminToken]);
 
-  const loadSkills = () => {
+  const loadSkills = useCallback(() => {
     apiGet<Skill[]>("/admin/skills", headers)
       .then(setSkills)
       .catch(() => setSkills([]));
-  };
+  }, [headers]);
 
   useEffect(() => {
     if (isLoggedIn) {
       loadSkills();
     }
-  }, []);
+  }, [isLoggedIn, loadSkills]);
 
   const createSkill = async () => {
     setMessage(null);

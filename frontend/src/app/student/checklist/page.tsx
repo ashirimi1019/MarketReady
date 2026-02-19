@@ -4,43 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiGet, apiSend, API_BASE, getAuthHeaders } from "@/lib/api";
 import { useSession } from "@/lib/session";
-
-type ChecklistItem = {
-  id: string;
-  title: string;
-  description?: string | null;
-  tier: string;
-  allowed_proof_types: string[];
-  status: string;
-};
-
-type Proof = {
-  id: string;
-  checklist_item_id: string;
-  proof_type: string;
-  url: string;
-  view_url?: string | null;
-  status: string;
-  review_note?: string | null;
-  created_at: string;
-};
-
-type StorageMeta = {
-  s3_enabled: boolean;
-  local_enabled: boolean;
-};
-
-type Readiness = {
-  score: number;
-  band: string;
-  next_actions: string[];
-};
-
-type EvidenceMapResponse = {
-  matched_count: number;
-  mode: string;
-  matched_item_ids: string[];
-};
+import type { ChecklistItem, Proof, StorageMeta, Readiness, EvidenceMapResponse } from "@/types/api";
 
 function ChecklistPageContent() {
   const { username, isLoggedIn } = useSession();
@@ -65,7 +29,7 @@ function ChecklistPageContent() {
     return normalized === "cert_upload" || normalized.includes("cert");
   };
 
-  const getStatusLabel = (proofs: Proof[], fallback: string) => {
+  const getStatusLabel = (proofs: Proof[], fallback?: string) => {
     if (!proofs.length) return "incomplete";
     const verifiedProofs = proofs.filter((proof) => proof.status === "verified");
     if (verifiedProofs.length) {
@@ -139,7 +103,8 @@ function ChecklistPageContent() {
       setMessage("Please log in first.");
       return;
     }
-    const selectedType = proofType[item.id] || item.allowed_proof_types[0];
+    const allowedProofTypes = item.allowed_proof_types ?? [];
+    const selectedType = proofType[item.id] || allowedProofTypes[0];
     const file = proofFile[item.id];
     const requiresDocumentUpload = isCertificateProofType(selectedType || "");
     if (!selectedType) {
@@ -387,7 +352,8 @@ function ChecklistPageContent() {
       )}
       <div className="mt-8 grid gap-4">
         {items.map((item) => {
-          const selectedType = proofType[item.id] ?? item.allowed_proof_types[0] ?? "";
+          const allowedProofTypes = item.allowed_proof_types ?? [];
+          const selectedType = proofType[item.id] ?? allowedProofTypes[0] ?? "";
           const requiresDocumentUpload = isCertificateProofType(selectedType);
           return (
             <div
@@ -411,7 +377,7 @@ function ChecklistPageContent() {
               })()}
               <p className="text-lg font-semibold">{item.title}</p>
               <span className="text-sm text-[color:var(--muted)]">
-                {item.tier.replace("_", " ")}
+                {(item.tier ?? "core").replace("_", " ")}
               </span>
               {proofsByItem[item.id]?.[0] && (
                 <div className="mt-3 text-sm text-[color:var(--muted)]">
@@ -442,9 +408,18 @@ function ChecklistPageContent() {
               )}
             </div>
             <div className="flex flex-1 flex-col gap-3 md:max-w-md">
+              <label
+                htmlFor={`proof-type-${item.id}`}
+                className="text-sm text-[color:var(--muted)]"
+              >
+                Proof type
+              </label>
               <select
+                id={`proof-type-${item.id}`}
                 className="rounded-lg border border-[color:var(--border)] p-3 text-base"
                 value={selectedType}
+                title={`Proof type for ${item.title}`}
+                aria-label={`Proof type for ${item.title}`}
                 onChange={(event) => {
                   const nextType = event.target.value;
                   setProofType((prev) => ({ ...prev, [item.id]: nextType }));
@@ -454,8 +429,8 @@ function ChecklistPageContent() {
                 }}
                 disabled={!isLoggedIn}
               >
-                {(item.allowed_proof_types.length
-                  ? item.allowed_proof_types
+                {(allowedProofTypes.length
+                  ? allowedProofTypes
                   : ["repo_url"]).map((type) => (
                   <option key={type} value={type}>
                     {type}
@@ -467,9 +442,18 @@ function ChecklistPageContent() {
                   <div className="rounded-lg border border-dashed border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]">
                     Certificate proofs require file upload and AI authenticity verification.
                   </div>
+                  <label
+                    htmlFor={`certificate-upload-${item.id}`}
+                    className="text-sm text-[color:var(--muted)]"
+                  >
+                    Upload certificate document
+                  </label>
                   <input
+                    id={`certificate-upload-${item.id}`}
                     type="file"
                     className="rounded-lg border border-[color:var(--border)] p-3 text-base"
+                    title={`Upload certificate file for ${item.title}`}
+                    aria-label={`Upload certificate file for ${item.title}`}
                     onChange={(event) =>
                       setProofFile((prev) => ({
                         ...prev,

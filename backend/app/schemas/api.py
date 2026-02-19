@@ -170,6 +170,32 @@ class ReadinessOut(BaseModel):
     next_actions: List[str]
 
 
+class ReadinessRankOut(BaseModel):
+    score: float
+    band: str
+    percentile: float
+    rank: int
+    total_students: int
+    linkedin_share_text: str
+    linkedin_share_url: str
+
+
+class WeeklyStreakWeekOut(BaseModel):
+    week_start: datetime
+    week_label: str
+    has_activity: bool
+
+
+class WeeklyMilestoneStreakOut(BaseModel):
+    current_streak_weeks: int
+    longest_streak_weeks: int
+    total_active_weeks: int
+    active_this_week: bool
+    rewards: List[str] = Field(default_factory=list)
+    next_reward_at_weeks: Optional[int] = None
+    recent_weeks: List[WeeklyStreakWeekOut] = Field(default_factory=list)
+
+
 class TimelineOut(BaseModel):
     milestone_id: UUID
     title: str
@@ -217,6 +243,70 @@ class AiGuideFeedbackIn(BaseModel):
 class AiGuideFeedbackOut(BaseModel):
     ok: bool
     message: str
+
+
+class AiInterviewSessionIn(BaseModel):
+    target_role: Optional[str] = None
+    job_description: Optional[str] = None
+    question_count: int = Field(default=5, ge=3, le=10)
+
+
+class AiInterviewQuestionOut(BaseModel):
+    id: UUID
+    order_index: int
+    prompt: str
+    focus_item_id: Optional[UUID] = None
+    focus_title: Optional[str] = None
+    focus_milestone_id: Optional[UUID] = None
+    focus_milestone_title: Optional[str] = None
+    source_proof_id: Optional[UUID] = None
+    difficulty: Optional[str] = None
+
+
+class AiInterviewResponseIn(BaseModel):
+    question_id: UUID
+    answer_text: Optional[str] = None
+    video_url: Optional[str] = None
+
+
+class AiInterviewResponseOut(BaseModel):
+    id: UUID
+    session_id: UUID
+    question_id: UUID
+    answer_text: Optional[str] = None
+    video_url: Optional[str] = None
+    ai_feedback: Optional[str] = None
+    ai_score: Optional[float] = None
+    confidence: Optional[float] = None
+    submitted_at: datetime
+
+
+class AiInterviewSessionOut(BaseModel):
+    id: UUID
+    target_role: Optional[str] = None
+    job_description: Optional[str] = None
+    question_count: int
+    status: str
+    summary: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    questions: List[AiInterviewQuestionOut] = Field(default_factory=list)
+    responses: List[AiInterviewResponseOut] = Field(default_factory=list)
+
+
+class AiResumeArchitectIn(BaseModel):
+    target_role: Optional[str] = None
+    job_description: Optional[str] = None
+
+
+class AiResumeArtifactOut(BaseModel):
+    id: UUID
+    target_role: Optional[str] = None
+    job_description: Optional[str] = None
+    ats_keywords: List[str] = Field(default_factory=list)
+    markdown_content: str
+    structured: Optional[dict[str, Any]] = None
+    created_at: datetime
 
 
 class AdminAiSummaryIn(BaseModel):

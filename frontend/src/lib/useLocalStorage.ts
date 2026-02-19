@@ -3,32 +3,24 @@
 import { useEffect, useState } from "react";
 
 export function useLocalStorage(key: string, initialValue: string) {
-  const [value, setValue] = useState(initialValue);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
+  const [value, setValue] = useState(() => {
+    if (typeof window === "undefined") {
+      return initialValue;
+    }
     try {
-      const stored = window.localStorage.getItem(key);
-      if (stored !== null) {
-        setValue(stored);
-      }
-      setHydrated(true);
+      return window.localStorage.getItem(key) ?? initialValue;
     } catch {
-      setHydrated(true);
-      // ignore
+      return initialValue;
     }
-  }, [key]);
+  });
 
   useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
     try {
       window.localStorage.setItem(key, value);
     } catch {
       // ignore
     }
-  }, [key, value, hydrated]);
+  }, [key, value]);
 
   return [value, setValue] as const;
 }

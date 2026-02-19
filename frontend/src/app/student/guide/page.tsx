@@ -3,33 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
 import { useSession } from "@/lib/session";
-
-type ChecklistItem = {
-  id: string;
-  title: string;
-  status: string;
-};
-
-type AiGuide = {
-  explanation: string;
-  decision?: string | null;
-  recommendations?: string[];
-  recommended_certificates?: string[];
-  materials_to_master?: string[];
-  market_top_skills?: string[];
-  market_alignment?: string[];
-  priority_focus_areas?: string[];
-  weekly_plan?: string[];
-  evidence_snippets?: string[];
-  confidence_by_item?: Record<string, number>;
-  next_actions: string[];
-  suggested_proof_types: string[];
-  cited_checklist_item_ids: string[];
-  resume_detected?: boolean;
-  resume_strengths?: string[];
-  resume_improvements?: string[];
-  uncertainty?: string | null;
-};
+import type { ChecklistItem, AiGuide } from "@/types/api";
 
 export default function StudentAiGuidePage() {
   const { username, isLoggedIn } = useSession();

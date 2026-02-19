@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSession } from "@/lib/session";
@@ -26,9 +26,9 @@ export default function AdminProofsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
-  const headers = { "X-Admin-Token": adminToken };
+  const headers = useMemo(() => ({ "X-Admin-Token": adminToken }), [adminToken]);
 
-  const loadProofs = () => {
+  const loadProofs = useCallback(() => {
     const query = statusFilter ? `?status=${statusFilter}` : "";
     apiGet<Proof[]>(`/admin/proofs${query}`, headers)
       .then((data) => {
@@ -40,13 +40,13 @@ export default function AdminProofsPage() {
         setReviewNotes(notes);
       })
       .catch(() => setProofs([]));
-  };
+  }, [headers, statusFilter]);
 
   useEffect(() => {
     if (isLoggedIn) {
       loadProofs();
     }
-  }, [statusFilter]);
+  }, [isLoggedIn, loadProofs]);
 
   const updateStatus = async (proofId: string, status: string) => {
     await apiSend(`/admin/proofs/${proofId}`, {
@@ -98,17 +98,28 @@ export default function AdminProofsPage() {
         </label>
       </div>
       <div className="mt-6 flex flex-wrap gap-3">
-        <select
-          className="rounded-lg border border-[color:var(--border)] p-3"
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-        >
-          <option value="">All statuses</option>
-          <option value="submitted">Submitted</option>
-          <option value="needs_more_evidence">Needs more evidence</option>
-          <option value="verified">Verified</option>
-          <option value="rejected">Rejected</option>
-        </select>
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="proof-status-filter"
+            className="text-sm text-[color:var(--muted)]"
+          >
+            Status
+          </label>
+          <select
+            id="proof-status-filter"
+            className="rounded-lg border border-[color:var(--border)] p-3"
+            value={statusFilter}
+            title="Status filter"
+            aria-label="Status filter"
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="">All statuses</option>
+            <option value="submitted">Submitted</option>
+            <option value="needs_more_evidence">Needs more evidence</option>
+            <option value="verified">Verified</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
         <button className="cta cta-secondary" onClick={loadProofs}>
           Refresh
         </button>
@@ -138,6 +149,8 @@ export default function AdminProofsPage() {
                 className="w-full max-w-md rounded-lg border border-[color:var(--border)] p-3 text-sm"
                 placeholder="Review note for student"
                 value={reviewNotes[row.id] ?? ""}
+                aria-label={`Review note for ${row.proof_type}`}
+                title={`Review note for ${row.proof_type}`}
                 onChange={(event) =>
                   setReviewNotes((prev) => ({
                     ...prev,

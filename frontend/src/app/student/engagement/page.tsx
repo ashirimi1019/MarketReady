@@ -30,6 +30,16 @@ type EngagementSummary = {
   next_deadlines: string[];
 };
 
+type WeeklyMilestoneStreak = {
+  current_streak_weeks: number;
+  longest_streak_weeks: number;
+  total_active_weeks: number;
+  active_this_week: boolean;
+  rewards: string[];
+  next_reward_at_weeks?: number | null;
+  recent_weeks: { week_label: string; has_activity: boolean }[];
+};
+
 export default function StudentEngagementPage() {
   const { username, isLoggedIn } = useSession();
   const headers = useMemo(() => ({ "X-User-Id": username }), [username]);
@@ -37,6 +47,7 @@ export default function StudentEngagementPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [summary, setSummary] = useState<EngagementSummary | null>(null);
+  const [weeklyStreak, setWeeklyStreak] = useState<WeeklyMilestoneStreak | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [targetDate, setTargetDate] = useState("");
@@ -51,6 +62,9 @@ export default function StudentEngagementPage() {
     apiGet<EngagementSummary>("/user/engagement/summary", headers)
       .then(setSummary)
       .catch(() => setSummary(null));
+    apiGet<WeeklyMilestoneStreak>("/user/streak", headers)
+      .then(setWeeklyStreak)
+      .catch(() => setWeeklyStreak(null));
   }, [headers, isLoggedIn]);
 
   useEffect(() => {
@@ -162,29 +176,91 @@ export default function StudentEngagementPage() {
           <p className="text-2xl font-semibold">{summary?.unread_notifications ?? 0}</p>
         </div>
       </div>
+      <div className="mt-4 rounded-xl border border-[color:var(--border)] p-4">
+        <p className="text-sm text-[color:var(--muted)]">Milestone Streak (weekly)</p>
+        <p className="mt-1 text-xl font-semibold">
+          {weeklyStreak?.current_streak_weeks ?? 0} week(s)
+        </p>
+        <p className="mt-1 text-sm text-[color:var(--muted)]">
+          Longest: {weeklyStreak?.longest_streak_weeks ?? 0} week(s) · Active weeks:{" "}
+          {weeklyStreak?.total_active_weeks ?? 0}
+        </p>
+        {weeklyStreak?.rewards?.length ? (
+          <p className="mt-1 text-sm text-[color:var(--muted)]">
+            Rewards: {weeklyStreak.rewards.join(", ")}
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-[color:var(--muted)]">
+            Next reward at {weeklyStreak?.next_reward_at_weeks ?? 2} weeks.
+          </p>
+        )}
+        {weeklyStreak?.recent_weeks?.length ? (
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            {weeklyStreak.recent_weeks.map((week) => (
+              <span
+                key={week.week_label}
+                className={`rounded-full border px-3 py-1 ${
+                  week.has_activity
+                    ? "border-[color:var(--accent-2)] text-[color:var(--accent-2)]"
+                    : "border-[color:var(--border)] text-[color:var(--muted)]"
+                }`}
+              >
+                {week.week_label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <div className="divider" />
 
       <h3 className="text-xl font-semibold">Create Goal</h3>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <input
-          className="rounded-lg border border-[color:var(--border)] p-3"
-          placeholder="Goal title"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <input
-          className="rounded-lg border border-[color:var(--border)] p-3"
-          placeholder="Description"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-        <input
-          type="date"
-          className="rounded-lg border border-[color:var(--border)] p-3"
-          value={targetDate}
-          onChange={(event) => setTargetDate(event.target.value)}
-        />
+        <label
+          htmlFor="engagement-goal-title"
+          className="text-sm text-[color:var(--muted)]"
+        >
+          Goal title
+          <input
+            id="engagement-goal-title"
+            className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
+            placeholder="Goal title"
+            value={title}
+            title="Goal title"
+            aria-label="Goal title"
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </label>
+        <label
+          htmlFor="engagement-goal-description"
+          className="text-sm text-[color:var(--muted)]"
+        >
+          Description
+          <input
+            id="engagement-goal-description"
+            className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
+            placeholder="Description"
+            value={description}
+            title="Goal description"
+            aria-label="Goal description"
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+        <label
+          htmlFor="engagement-goal-target-date"
+          className="text-sm text-[color:var(--muted)]"
+        >
+          Target date
+          <input
+            id="engagement-goal-target-date"
+            type="date"
+            className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
+            value={targetDate}
+            title="Target date"
+            aria-label="Target date"
+            onChange={(event) => setTargetDate(event.target.value)}
+          />
+        </label>
       </div>
       <div className="mt-3 flex flex-wrap gap-3">
         <button className="cta" onClick={addGoal}>

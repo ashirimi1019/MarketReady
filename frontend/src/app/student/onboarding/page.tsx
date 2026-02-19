@@ -189,8 +189,11 @@ export default function StudentOnboardingPage() {
         <label className="text-sm text-[color:var(--muted)]">
           Cohort
           <input
+            id="onboarding-cohort"
             className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
             value={cohort}
+            title="Cohort"
+            aria-label="Cohort"
             onChange={(event) => setCohort(event.target.value)}
             disabled={!isLoggedIn || locked}
           />
@@ -198,10 +201,21 @@ export default function StudentOnboardingPage() {
       </div>
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-lg font-semibold">Major</h3>
+          <h3 id="onboarding-major-heading" className="text-lg font-semibold">
+            Major
+          </h3>
+          <label
+            htmlFor="onboarding-major-select"
+            className="mt-3 block text-sm text-[color:var(--muted)]"
+          >
+            Choose major
+          </label>
           <select
-            className="mt-3 w-full rounded-lg border border-[color:var(--border)] p-3"
+            id="onboarding-major-select"
+            className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
             value={selectedMajor}
+            title="Major"
+            aria-label="Major"
             onChange={(event) => setSelectedMajor(event.target.value)}
             disabled={!isLoggedIn || locked}
           >
@@ -214,10 +228,21 @@ export default function StudentOnboardingPage() {
           </select>
         </div>
         <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-lg font-semibold">Pathway</h3>
+          <h3 id="onboarding-pathway-heading" className="text-lg font-semibold">
+            Pathway
+          </h3>
+          <label
+            htmlFor="onboarding-pathway-select"
+            className="mt-3 block text-sm text-[color:var(--muted)]"
+          >
+            Choose pathway
+          </label>
           <select
-            className="mt-3 w-full rounded-lg border border-[color:var(--border)] p-3"
+            id="onboarding-pathway-select"
+            className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
             value={selectedPathway}
+            title="Pathway"
+            aria-label="Pathway"
             onChange={(event) => setSelectedPathway(event.target.value)}
             disabled={!isLoggedIn || locked}
           >

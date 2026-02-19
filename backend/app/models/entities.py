@@ -300,3 +300,82 @@ class StudentNotification(Base):
     is_read = Column(Boolean, nullable=False, default=False)
     metadata_json = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AiInterviewSession(Base):
+    __tablename__ = "ai_interview_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(String(120), nullable=False, index=True)
+    target_role = Column(String(160), nullable=True)
+    job_description = Column(Text, nullable=True)
+    question_count = Column(Integer, nullable=False, default=5)
+    status = Column(String(32), nullable=False, default="active")
+    summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AiInterviewQuestion(Base):
+    __tablename__ = "ai_interview_questions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    session_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ai_interview_sessions.id"),
+        nullable=False,
+        index=True,
+    )
+    order_index = Column(Integer, nullable=False)
+    prompt = Column(Text, nullable=False)
+    focus_item_id = Column(UUID(as_uuid=True), ForeignKey("checklist_items.id"), nullable=True)
+    focus_milestone_id = Column(UUID(as_uuid=True), ForeignKey("milestones.id"), nullable=True)
+    source_proof_id = Column(UUID(as_uuid=True), ForeignKey("proofs.id"), nullable=True)
+    difficulty = Column(String(32), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    session = relationship("AiInterviewSession")
+    focus_item = relationship("ChecklistItem")
+    focus_milestone = relationship("Milestone")
+    source_proof = relationship("Proof")
+
+
+class AiInterviewResponse(Base):
+    __tablename__ = "ai_interview_responses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    session_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ai_interview_sessions.id"),
+        nullable=False,
+        index=True,
+    )
+    question_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ai_interview_questions.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    answer_text = Column(Text, nullable=True)
+    video_url = Column(Text, nullable=True)
+    ai_feedback = Column(Text, nullable=True)
+    ai_score = Column(Float, nullable=True)
+    confidence = Column(Float, nullable=True)
+    submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    session = relationship("AiInterviewSession")
+    question = relationship("AiInterviewQuestion")
+
+
+class AiResumeArtifact(Base):
+    __tablename__ = "ai_resume_artifacts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(String(120), nullable=False, index=True)
+    target_role = Column(String(160), nullable=True)
+    job_description = Column(Text, nullable=True)
+    ats_keywords = Column(JSONB, nullable=True)
+    markdown_content = Column(Text, nullable=False)
+    structured_json = Column("structured", JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

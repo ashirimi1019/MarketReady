@@ -1,10 +1,13 @@
 from datetime import datetime
+import logging
 import os
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.api.deps import get_db, get_current_user_id
 from app.core.config import settings
@@ -128,7 +131,7 @@ def select_pathway(
         try:
             sync_resume_requirement_matches(db, user_id)
         except Exception:
-            pass
+            logger.exception("sync_resume_requirement_matches failed for user %s", user_id)
         return existing
 
     record = UserPathway(
@@ -145,7 +148,7 @@ def select_pathway(
     try:
         sync_resume_requirement_matches(db, user_id)
     except Exception:
-        pass
+        logger.exception("sync_resume_requirement_matches failed for user %s", user_id)
     return record
 
 
@@ -347,7 +350,7 @@ def upload_resume(
     try:
         sync_resume_requirement_matches(db, user_id)
     except Exception:
-        pass
+        logger.exception("sync_resume_requirement_matches failed for user %s", user_id)
     db.refresh(profile)
     return _serialize_profile(profile)
 

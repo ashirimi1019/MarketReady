@@ -280,13 +280,22 @@ export default function StudentProfilePage() {
                 </a>
               </div>
             )}
-            <input
-              type="file"
-              accept=".pdf,.doc,.docx,.txt,.rtf"
-              className="rounded-lg border border-[color:var(--border)] p-3"
-              onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)}
-              disabled={!isLoggedIn || uploadingResume || saving}
-            />
+            <label
+              htmlFor="profile-resume-upload"
+              className="text-sm text-[color:var(--muted)]"
+            >
+              Resume file
+              <input
+                id="profile-resume-upload"
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,.rtf"
+                className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
+                title="Upload resume file"
+                aria-label="Upload resume file"
+                onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)}
+                disabled={!isLoggedIn || uploadingResume || saving}
+              />
+            </label>
             <button
               className="cta cta-secondary"
               onClick={uploadResume}

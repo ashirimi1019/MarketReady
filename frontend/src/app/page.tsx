@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
 import { useSession } from "@/lib/session";
@@ -16,22 +17,107 @@ type Proof = {
   status: string;
 };
 
+type ChecklistItem = {
+  id: string;
+};
+
+type Readiness = {
+  score: number;
+};
+
+type ReadinessRank = {
+  percentile: number;
+  rank: number;
+  total_students: number;
+};
+
+type WeeklyMilestoneStreak = {
+  current_streak_weeks: number;
+};
+
+const TICKER_ITEMS = [
+  "Software Eng: +15% demand for AI integration skills",
+  "Product Design: shift toward spatial computing",
+  "Cybersecurity: zero-trust verification is now a must-have",
+  "Data Science: demand rising for production ML + analytics engineering",
+  "Cloud: AWS architecture + DevOps automation remain high-demand",
+];
+
+const QUICK_LINKS = [
+  {
+    title: "My Pathway",
+    text: "Confirm major, pathway, and year-by-year roadmap.",
+    href: "/student/onboarding",
+  },
+  {
+    title: "Submit Proof",
+    text: "Upload evidence for completed checklist requirements.",
+    href: "/student/checklist",
+  },
+  {
+    title: "Proof Vault",
+    text: "Track submitted, verified, and rejected artifacts.",
+    href: "/student/proofs",
+  },
+  {
+    title: "Readiness Score",
+    text: "View your score out of 100 and cap reasons.",
+    href: "/student/readiness",
+  },
+  {
+    title: "Interview Simulator",
+    text: "Practice AI interview questions tied to your submitted proofs.",
+    href: "/student/interview",
+  },
+  {
+    title: "AI Resume Architect",
+    text: "Generate ATS-ready resume drafts from your portal evidence.",
+    href: "/student/resume-architect",
+  },
+  {
+    title: "AI Guide",
+    text: "Generate targeted recommendations on demand.",
+    href: "/student/guide",
+  },
+  {
+    title: "Timeline",
+    text: "Stay aligned to year-based milestone targets.",
+    href: "/student/timeline",
+  },
+];
+
+function readinessToRank(score: number | null): string {
+  if (score === null) return "Top --";
+  if (score >= 90) return "Top 5%";
+  if (score >= 80) return "Top 12%";
+  if (score >= 70) return "Top 22%";
+  if (score >= 60) return "Top 35%";
+  return "Climbing";
+}
+
 export default function Home() {
   const { username, isLoggedIn } = useSession();
   const displayName = formatDisplayName(username);
   const headers = useMemo(() => ({ "X-User-Id": username }), [username]);
+
+  const [auditInput, setAuditInput] = useState("");
   const [guide, setGuide] = useState<AiGuide | null>(null);
   const [guideError, setGuideError] = useState<string | null>(null);
   const [guideLoading, setGuideLoading] = useState(false);
+
   const [proofStats, setProofStats] = useState({
     submitted: 0,
     verified: 0,
     rejected: 0,
   });
+  const [checklistCount, setChecklistCount] = useState<number | null>(null);
+  const [readinessScore, setReadinessScore] = useState<number | null>(null);
+  const [readinessRank, setReadinessRank] = useState<ReadinessRank | null>(null);
+  const [weeklyStreak, setWeeklyStreak] = useState<WeeklyMilestoneStreak | null>(null);
 
-  const generateGuide = async () => {
+  const runAudit = async () => {
     if (!isLoggedIn) {
-      setGuideError("Please log in to generate AI guidance.");
+      setGuideError("Log in to run the AI audit.");
       return;
     }
     setGuideLoading(true);
@@ -43,11 +129,11 @@ export default function Home() {
           ...headers,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question: null }),
+        body: JSON.stringify({ question: auditInput.trim() || null }),
       });
       setGuide(data);
     } catch (err) {
-      setGuideError(err instanceof Error ? err.message : "AI guide unavailable.");
+      setGuideError(err instanceof Error ? err.message : "AI audit unavailable.");
     } finally {
       setGuideLoading(false);
     }
@@ -72,304 +158,198 @@ export default function Home() {
         });
         setProofStats(stats);
       })
-      .catch(() => {
-        setProofStats({ submitted: 0, verified: 0, rejected: 0 });
-      });
+      .catch(() => setProofStats({ submitted: 0, verified: 0, rejected: 0 }));
   }, [headers, isLoggedIn]);
 
-  if (isLoggedIn) {
-    return (
-      <main className="flex flex-col gap-12">
-        <section className="panel">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-col gap-3">
-              <span className="badge">Personal Command Center</span>
-              <h1 className="text-4xl md:text-5xl font-semibold leading-tight">
-                Proof tracker for {displayName}
-              </h1>
-              <p className="max-w-2xl text-lg text-[color:var(--muted)]">
-                You are in control of your readiness. Keep proofs current, track gaps,
-                and move each milestone to complete.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <a className="cta" href="/student/checklist">
-                  Submit New Proof
-                </a>
-                <a className="cta cta-secondary" href="/student/readiness">
-                  View Readiness
-                </a>
-              </div>
-            </div>
-            <div className="hero-card">
-              <div className="flex items-center justify-between">
-                <span className="chip">My Progress</span>
-                <span className="text-xs text-[color:var(--muted)]">
-                  Updated today
-                </span>
-              </div>
-              <div className="mt-6 grid gap-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-[color:var(--muted)]">Next Focus</p>
-                    <p className="stat">Checklist Proofs</p>
-                  </div>
-                  <span className="chip">Active</span>
-                </div>
-                <div className="kpi-grid">
-                  <div className="kpi-cell">
-                    <p className="text-xs text-[color:var(--muted)]">Submitted</p>
-                    <p className="mt-1 text-2xl font-semibold">{proofStats.submitted}</p>
-                  </div>
-                  <div className="kpi-cell">
-                    <p className="text-xs text-[color:var(--muted)]">Verified</p>
-                    <p className="mt-1 text-2xl font-semibold">{proofStats.verified}</p>
-                  </div>
-                  <div className="kpi-cell">
-                    <p className="text-xs text-[color:var(--muted)]">Rejected</p>
-                    <p className="mt-1 text-2xl font-semibold">{proofStats.rejected}</p>
-                  </div>
-                </div>
-                <div className="metric-strip">
-                  <span className="chip">Status board live</span>
-                  <span className="chip">AI guidance on demand</span>
-                  <span className="chip">Proof queue tracked</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    apiGet<ChecklistItem[]>("/user/checklist", headers)
+      .then((items) => setChecklistCount(items.length))
+      .catch(() => setChecklistCount(null));
+  }, [headers, isLoggedIn]);
 
-        <section className="panel">
-          <h3 className="section-title">AI Decision & Recommendations</h3>
-          <p className="section-subtitle mt-2">
-            Grounded guidance based on your checklist, milestones, and profile.
-          </p>
-          <div className="mt-4">
-            <button className="cta" onClick={generateGuide} disabled={guideLoading}>
-              {guideLoading ? "Generating guidance..." : "Generate Guidance"}
-            </button>
-          </div>
-          {!guide && !guideLoading && !guideError && (
-            <p className="mt-4 text-sm text-[color:var(--muted)]">
-              Guidance is generated only when you click the button.
-            </p>
-          )}
-          {guideLoading && (
-            <p className="mt-4 text-sm text-[color:var(--muted)]">
-              Generating guidance...
-            </p>
-          )}
-          {guideError && (
-            <p className="mt-4 text-sm text-[color:var(--accent-2)]">
-              {guideError}
-            </p>
-          )}
-          {guide && !guideLoading && (
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-[color:var(--border)] p-4">
-                <p className="text-sm text-[color:var(--muted)]">Decision</p>
-                <p className="mt-2 text-lg font-semibold">
-                  {guide.decision || "No decision provided."}
-                </p>
-              </div>
-              <div className="rounded-xl border border-[color:var(--border)] p-4">
-                <p className="text-sm text-[color:var(--muted)]">
-                  Recommendations
-                </p>
-                <ul className="mt-2 grid gap-2 text-[color:var(--muted)]">
-                  {guide.recommendations?.length ? (
-                    guide.recommendations.map((item) => <li key={item}>{item}</li>)
-                  ) : (
-                    <li>No recommendations yet.</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-          )}
-          {guide?.uncertainty && (
-            <p className="mt-3 text-sm text-[color:var(--muted)]">
-              {guide.uncertainty}
-            </p>
-          )}
-        </section>
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    apiGet<Readiness>("/user/readiness", headers)
+      .then((readiness) => setReadinessScore(readiness.score))
+      .catch(() => setReadinessScore(null));
+  }, [headers, isLoggedIn]);
 
-        <section className="grid gap-6 md:grid-cols-3">
-          <div className="md:col-span-3">
-            <h3 className="section-title">Quick Access</h3>
-            <p className="section-subtitle mt-2">
-              High-impact actions in one place.
-            </p>
-          </div>
-        </section>
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    apiGet<ReadinessRank>("/user/readiness/rank", headers)
+      .then(setReadinessRank)
+      .catch(() => setReadinessRank(null));
+  }, [headers, isLoggedIn]);
 
-        <section className="action-grid">
-          {[
-            {
-              title: "My Pathway",
-              text: "Review your major and pathway selection and confirm your cohort.",
-              href: "/student/onboarding",
-            },
-            {
-              title: "Proof Uploads",
-              text: "Submit evidence for each checklist item and track verification.",
-              href: "/student/checklist",
-            },
-            {
-              title: "My Proofs",
-              text: "Review proof status and admin feedback in one place.",
-              href: "/student/proofs",
-            },
-            {
-              title: "Readiness Score",
-              text: "See your score out of 100 and understand cap reasons.",
-              href: "/student/readiness",
-            },
-            {
-              title: "AI Guide",
-              text: "Get grounded decisions and recommendations from your data.",
-              href: "/student/guide",
-            },
-            {
-              title: "Timeline View",
-              text: "Keep milestones aligned with the year-by-year plan.",
-              href: "/student/timeline",
-            },
-            {
-              title: "Logout",
-              text: "Securely end your session on this device.",
-              href: "/logout",
-            },
-          ].map((card) => (
-            <a key={card.title} href={card.href} className="action-card">
-              <h2 className="text-xl font-semibold">{card.title}</h2>
-              <p className="mt-3 text-[color:var(--muted)]">{card.text}</p>
-              <div className="mt-4 text-sm text-[color:var(--accent-2)]">
-                Open now
-              </div>
-            </a>
-          ))}
-        </section>
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    apiGet<WeeklyMilestoneStreak>("/user/streak", headers)
+      .then(setWeeklyStreak)
+      .catch(() => setWeeklyStreak(null));
+  }, [headers, isLoggedIn]);
 
-        <section className="panel">
-          <h3 className="section-title">Todays Focus</h3>
-          <p className="section-subtitle mt-2">
-            Your checklist is the truth source. Add proof or update milestones to
-            keep your readiness current.
-          </p>
-          <div className="mt-4 grid gap-3 text-[color:var(--muted)]">
-            <span>Review missing proofs and prioritize non-negotiables.</span>
-            <span>Upload links or files to lock in completed evidence.</span>
-            <span>Check readiness for updated next actions.</span>
-          </div>
-        </section>
-      </main>
-    );
-  }
+  const versionedSkills = isLoggedIn ? checklistCount ?? 0 : 14;
+  const verifiedAssets = isLoggedIn ? proofStats.verified : 32;
+  const marketRank = isLoggedIn
+    ? readinessRank
+      ? `Top ${Math.max(1, Math.round(100 - readinessRank.percentile + 1))}%`
+      : readinessToRank(readinessScore)
+    : "Top 4%";
 
   return (
-    <main className="flex flex-col gap-16">
-      <section className="hero">
-        <div className="mx-auto flex max-w-4xl flex-col items-center gap-6 text-center">
-          <span className="badge">Market-Verified Readiness Platform</span>
-          <h1 className="text-4xl md:text-6xl font-semibold leading-tight">
-            Build job-ready graduates with evidence, not assumptions.
-          </h1>
-          <p className="max-w-3xl text-lg md:text-xl text-[color:var(--muted)]">
-            Align students to live hiring signals. Every requirement is versioned,
-            measurable, and tied to proof.
-          </p>
-          <p className="max-w-3xl text-base md:text-lg text-[color:var(--muted)]">
-            Market Ready gives students a clear year-by-year execution plan, keeps
-            progress measurable through proof-backed milestones, and uses AI to
-            recommend what to build next so they can graduate with stronger resumes,
-            real project evidence, and a higher chance of landing a role quickly.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <a className="cta" href="/student/onboarding">
-              Enter Student Portal
-            </a>
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            {[
-              "Computer Science",
-              "Computer Information Systems",
-              "More Coming Soon",
-            ].map((chip) => (
-              <span key={chip} className="chip">
-                {chip}
-              </span>
-            ))}
-          </div>
+    <main className="landing-stack">
+      <section className="market-ticker" aria-label="Live market signals">
+        <div className="market-ticker-track">
+          {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, index) => (
+            <span key={`${item}-${index}`} className="market-ticker-item">
+              {item}
+            </span>
+          ))}
         </div>
       </section>
 
-      <section className="action-grid">
-        {[
-          {
-            title: "Non-Negotiables",
-            text: "Each pathway defines what must be proven, not just learned.",
-          },
-          {
-            title: "Readiness Scoring",
-            text: "Scores are capped when critical proof is missing, with transparent reasons.",
-          },
-          {
-            title: "Versioned Truth",
-            text: "Requirements evolve without shifting the goalposts mid-cohort.",
-          },
-        ].map((card) => (
-          <div key={card.title} className="action-card">
-            <h2 className="text-xl font-semibold">{card.title}</h2>
-            <p className="mt-3 text-[color:var(--muted)]">{card.text}</p>
-          </div>
-        ))}
-      </section>
-
-      <section className="panel">
-        <div className="flex flex-col gap-3">
-          <span className="badge">About Market Ready</span>
-          <h3 className="section-title">What This Platform Does</h3>
-          <p className="section-subtitle">
-            Market Ready helps students turn career readiness into a measurable plan.
-          </p>
-        </div>
-        <div className="mt-5 grid gap-5 md:grid-cols-2">
-          <div className="rounded-xl border border-[color:var(--border)] p-4">
-            <p className="text-sm font-medium text-white">Designed For</p>
-            <p className="mt-2 text-[color:var(--muted)]">
-              Students, advisors, and program teams who want readiness scoring tied
-              to real requirements and market signals.
-            </p>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-4">
-            <p className="text-sm font-medium text-white">Services Provided</p>
-            <p className="mt-2 text-[color:var(--muted)]">
-              Pathway onboarding, checklist tracking, readiness scoring, certificate
-              verification, and AI guidance on next priorities.
-            </p>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-4 md:col-span-2">
-            <p className="text-sm font-medium text-white">How It Works</p>
-            <p className="mt-2 text-[color:var(--muted)]">
-              Students confirm completed checklist items, upload certificates for AI
-              authenticity checks, then the system updates readiness and generates
-              targeted recommendations for skills and certifications.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel" id="student-flow">
-        <h3 className="section-title">Student Flow</h3>
-        <p className="section-subtitle mt-2">
-          Clarity, pacing, and proof - without guesswork.
+      <section className="panel hero-stage">
+        <span className="hero-signal-pill">AI-Powered Verification Engine</span>
+        <h1 className="hero-headline">
+          Stop <span className="hero-emphasis">guessing.</span>
+          <br />
+          Start proving.
+        </h1>
+        <p className="hero-copy">
+          {isLoggedIn
+            ? `${displayName}, your roadmap is now evidence-driven. Audit progress, close high-impact gaps, and keep your proof vault market-ready.`
+            : "The platform that converts career progress into verifiable outcomes using live hiring signals, AI guidance, and proof-backed milestones."}
         </p>
-        <div className="mt-4 grid gap-3 text-[color:var(--muted)]">
-          <span>Pick a major and pathway</span>
-          <span>Track proof-based checklist items</span>
-          <span>See readiness and next best actions</span>
+        {isLoggedIn && (
+          <p className="mt-3 text-sm text-[color:var(--muted)]">
+            Weekly proof streak: {weeklyStreak?.current_streak_weeks ?? 0} week(s)
+          </p>
+        )}
+        <div className="hero-actions">
+          {isLoggedIn ? (
+            <>
+              <Link href="/student/checklist" className="cta">
+                Open Proof Workflow
+              </Link>
+              <Link href="/student/readiness" className="cta cta-secondary">
+                View Readiness
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/register" className="cta">
+                Enter Student Portal
+              </Link>
+              <Link href="/login" className="cta cta-secondary">
+                Login
+              </Link>
+            </>
+          )}
         </div>
       </section>
+
+      <section className="panel auditor-stage" id="audit-engine">
+        <div className="auditor-header">
+          <span className="auditor-icon" aria-hidden>
+            ✦
+          </span>
+          <div>
+            <h2 className="section-title">AI Market Auditor</h2>
+            <p className="section-subtitle">
+              Paste resume highlights or project evidence and generate targeted direction.
+            </p>
+          </div>
+        </div>
+        <label className="auditor-label" htmlFor="audit-input">
+          Paste Resume Or Projects
+        </label>
+        <textarea
+          id="audit-input"
+          className="auditor-input"
+          value={auditInput}
+          onChange={(event) => setAuditInput(event.target.value)}
+          placeholder="Ex: Built and deployed a full-stack app with React, FastAPI, PostgreSQL, Docker, and AWS."
+        />
+        <div className="auditor-actions">
+          {isLoggedIn ? (
+            <button className="cta auditor-cta" onClick={runAudit} disabled={guideLoading}>
+              {guideLoading ? "Running Audit..." : "Audit My Readiness"}
+            </button>
+          ) : (
+            <Link className="cta auditor-cta" href="/login">
+              Audit My Readiness
+            </Link>
+          )}
+        </div>
+
+        {guideError && <p className="auditor-feedback auditor-feedback-error">{guideError}</p>}
+
+        {guide && !guideLoading && (
+          <div className="auditor-results">
+            <div className="auditor-result-card">
+              <p className="auditor-result-label">Decision</p>
+              <p className="auditor-result-value">
+                {guide.decision || "No decision returned."}
+              </p>
+            </div>
+            <div className="auditor-result-card">
+              <p className="auditor-result-label">Next Actions</p>
+              <ul className="auditor-result-list">
+                {guide.next_actions?.length
+                  ? guide.next_actions.map((item) => <li key={item}>{item}</li>)
+                  : guide.recommendations?.length
+                    ? guide.recommendations.map((item) => <li key={item}>{item}</li>)
+                    : [<li key="none">No actions returned.</li>]}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {guide?.uncertainty && (
+          <p className="auditor-feedback">{guide.uncertainty}</p>
+        )}
+      </section>
+
+      <section className="panel vault-stage" id="signals">
+        <div className="vault-head">
+          <h2 className="section-title">The Proof Vault</h2>
+          <p className="section-subtitle">
+            Where skills become evidence and readiness becomes measurable.
+          </p>
+        </div>
+        <div className="vault-grid">
+          <article className="vault-card vault-card-blue">
+            <p className="vault-value">{versionedSkills}</p>
+            <p className="vault-label">Versioned Skills</p>
+          </article>
+          <article className="vault-card vault-card-green">
+            <p className="vault-value">{verifiedAssets}</p>
+            <p className="vault-label">Verified Assets</p>
+          </article>
+          <article className="vault-card vault-card-purple">
+            <p className="vault-value">{marketRank}</p>
+            <p className="vault-label">Market Rank</p>
+          </article>
+        </div>
+        {isLoggedIn && readinessRank && (
+          <p className="mt-4 text-sm text-[color:var(--muted)]">
+            Global rank: #{readinessRank.rank} of {readinessRank.total_students}
+          </p>
+        )}
+      </section>
+
+      {isLoggedIn && (
+        <section className="action-grid">
+          {QUICK_LINKS.map((card) => (
+            <Link key={card.title} href={card.href} className="action-card">
+              <h2 className="text-xl font-semibold">{card.title}</h2>
+              <p className="mt-3 text-[color:var(--muted)]">{card.text}</p>
+              <div className="mt-4 text-sm text-[color:var(--accent-2)]">Open</div>
+            </Link>
+          ))}
+        </section>
+      )}
     </main>
   );
 }
