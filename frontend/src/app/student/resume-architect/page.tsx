@@ -75,7 +75,7 @@ export default function StudentResumeArchitectPage() {
 
   return (
     <section className="panel">
-      <h2 className="text-3xl font-semibold">AI Resume Architect</h2>
+      <h2 className="text-3xl font-semibold">AI Resume Architect · Powered by OpenAI</h2>
       <p className="mt-2 text-[color:var(--muted)]">
         Build ATS-optimized resumes directly from your profile and submitted proofs.
       </p>

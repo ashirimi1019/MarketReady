@@ -115,7 +115,7 @@ export default function StudentInterviewPage() {
 
   return (
     <section className="panel">
-      <h2 className="text-3xl font-semibold">AI Interview Simulator</h2>
+      <h2 className="text-3xl font-semibold">AI Interview Simulator · Powered by OpenAI</h2>
       <p className="mt-2 text-[color:var(--muted)]">
         Practice interview questions generated from your proof-backed milestones.
       </p>
@@ -204,7 +204,7 @@ export default function StudentInterviewPage() {
         <div className="mt-8">
           <h3 className="text-xl font-semibold">Active Session</h3>
           <p className="mt-2 text-sm text-[color:var(--muted)]">
-            {activeSession.summary || "Answer each question. AI will score and coach you."}
+            {activeSession.summary || "Answer each question. OpenAI will score and coach you."}
           </p>
           <div className="mt-4 grid gap-4">
             {activeSession.questions.map((question) => {
@@ -280,7 +280,7 @@ export default function StudentInterviewPage() {
                   {response && (
                     <div className="mt-4 rounded-lg border border-[color:var(--border)] p-3">
                       <p className="text-sm text-[color:var(--muted)]">
-                        AI score: {response.ai_score?.toFixed(1) ?? "--"} / 100
+                        OpenAI score: {response.ai_score?.toFixed(1) ?? "--"} / 100
                         {response.confidence !== null && response.confidence !== undefined
                           ? ` · confidence ${(response.confidence * 100).toFixed(0)}%`
                           : ""}

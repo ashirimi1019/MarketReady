@@ -253,9 +253,9 @@ export default function StudentProfilePage() {
         </div>
 
         <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-lg font-semibold">Resume for AI Personalization</h3>
+          <h3 className="text-lg font-semibold">Resume for AI Personalization · Powered by OpenAI</h3>
           <p className="mt-2 text-sm text-[color:var(--muted)]">
-            Upload your resume so the AI can personalize decisions and recommendations.
+            Upload your resume so OpenAI can personalize decisions and recommendations.
           </p>
           <div className="mt-4 grid gap-3">
             {resumeUrl && (

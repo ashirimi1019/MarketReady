@@ -34,7 +34,7 @@ export default function StudentAiGuidePage() {
 
   const loadGuide = async (prompt?: string) => {
     if (!isLoggedIn) {
-      setError("Please log in to use the AI guide.");
+      setError("Please log in to use the OpenAI guide.");
       return;
     }
     setLoading(true);
@@ -51,11 +51,11 @@ export default function StudentAiGuidePage() {
       });
       setGuide(data);
     } catch (err) {
-      const raw = err instanceof Error ? err.message : "Failed to load AI guidance.";
+      const raw = err instanceof Error ? err.message : "Failed to load OpenAI guidance.";
       if (raw.includes("No pathway selection found")) {
         setNeedsOnboarding(true);
         setError(
-          "Complete onboarding first: choose your major and pathway, then come back to AI Guide."
+          "Complete onboarding first: choose your major and pathway, then come back to the OpenAI Guide."
         );
         setGuide(null);
         return;
@@ -106,13 +106,13 @@ export default function StudentAiGuidePage() {
 
   return (
     <section className="panel">
-      <h2 className="text-3xl font-semibold">AI Guide</h2>
+      <h2 className="text-3xl font-semibold">AI Guide · Powered by OpenAI</h2>
       <p className="mt-2 text-[color:var(--muted)]">
-        Grounded recommendations based on your checklist, milestones, profile, and market signals.
+        Powered by OpenAI. Grounded recommendations based on your checklist, milestones, profile, and market signals.
       </p>
       {!isLoggedIn && (
         <p className="mt-4 text-sm text-[color:var(--accent-2)]">
-          Please log in to use the AI guide.
+          Please log in to use the OpenAI guide.
         </p>
       )}
       <div className="mt-6 grid gap-3">

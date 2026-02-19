@@ -240,11 +240,11 @@ function ChecklistPageContent() {
       if (!requiresDocumentUpload && created.status === "verified") {
         setMessage("Marked complete by self-attestation. Readiness updated.");
       } else if (created.status === "verified") {
-        setMessage("Submission verified by AI and profile needs were re-evaluated.");
+        setMessage("Submission verified by OpenAI and profile needs were re-evaluated.");
       } else if (created.status === "needs_more_evidence") {
-        setMessage("Submission recorded. AI needs more evidence for verification.");
+        setMessage("Submission recorded. OpenAI needs more evidence for verification.");
       } else if (created.status === "rejected") {
-        setMessage("Submission recorded, but AI rejected it for this requirement.");
+        setMessage("Submission recorded, but OpenAI rejected it for this requirement.");
       } else {
         setMessage("Submission recorded and readiness re-evaluated.");
       }
@@ -289,7 +289,7 @@ function ChecklistPageContent() {
       setReevaluation(readiness);
       if (result.matched_count > 0) {
         setMappingMessage(
-          `AI mapped ${result.matched_count} requirement(s) from uploaded evidence.`
+          `OpenAI mapped ${result.matched_count} requirement(s) from uploaded evidence.`
         );
       } else {
         setMappingMessage(
@@ -298,7 +298,7 @@ function ChecklistPageContent() {
       }
     } catch (err) {
       setMappingMessage(
-        err instanceof Error ? err.message : "Failed to run AI evidence mapper."
+        err instanceof Error ? err.message : "Failed to run OpenAI evidence mapper."
       );
     } finally {
       setMappingEvidence(false);
@@ -309,7 +309,7 @@ function ChecklistPageContent() {
     <section className="panel">
       <h2 className="text-3xl font-semibold">Checklist</h2>
       <p className="mt-2 text-[color:var(--muted)]">
-        Mark non-certificate items as done with Yes/No attestation. Certificates require upload + AI verification.
+        Mark non-certificate items as done with Yes/No attestation. Certificates require upload + OpenAI verification.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
@@ -317,7 +317,7 @@ function ChecklistPageContent() {
           onClick={runEvidenceMapper}
           disabled={!isLoggedIn || mappingEvidence}
         >
-          {mappingEvidence ? "Mapping Evidence..." : "Run AI Evidence Mapper"}
+          {mappingEvidence ? "Mapping Evidence..." : "Run OpenAI Evidence Mapper"}
         </button>
         {mappingMessage && (
           <span className="text-sm text-[color:var(--muted)]">
@@ -440,7 +440,7 @@ function ChecklistPageContent() {
               {requiresDocumentUpload ? (
                 <>
                   <div className="rounded-lg border border-dashed border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]">
-                    Certificate proofs require file upload and AI authenticity verification.
+                    Certificate proofs require file upload and OpenAI authenticity verification.
                   </div>
                   <label
                     htmlFor={`certificate-upload-${item.id}`}

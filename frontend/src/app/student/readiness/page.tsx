@@ -47,7 +47,7 @@ export default function StudentReadinessPage() {
 
   const generateGuide = async () => {
     if (!isLoggedIn) {
-      setGuideError("Please log in to generate AI guidance.");
+      setGuideError("Please log in to generate OpenAI guidance.");
       return;
     }
     setGuideLoading(true);
@@ -63,7 +63,7 @@ export default function StudentReadinessPage() {
       });
       setGuide(data);
     } catch (err) {
-      setGuideError(err instanceof Error ? err.message : "AI guide unavailable.");
+      setGuideError(err instanceof Error ? err.message : "OpenAI guide unavailable.");
     } finally {
       setGuideLoading(false);
     }
@@ -228,7 +228,7 @@ export default function StudentReadinessPage() {
         </ul>
       </div>
       <div className="mt-8">
-        <h3 className="text-2xl font-semibold">AI Guide Summary</h3>
+        <h3 className="text-2xl font-semibold">AI Guide Summary · Powered by OpenAI</h3>
         <p className="mt-2 text-[color:var(--muted)]">
           Decision + recommendations grounded in your profile and checklist.
         </p>

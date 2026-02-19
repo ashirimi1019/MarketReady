@@ -64,12 +64,12 @@ export default function NavBar() {
         <Link href="/student/onboarding">Portal</Link>
         <Link href="/student/proofs">Vault</Link>
         <Link href="/student/interview">Interview</Link>
-        <Link href="/student/resume-architect">Resume AI</Link>
+        <Link href="/student/resume-architect">Resume OpenAI</Link>
         <Link href="/student/guide">Guide</Link>
       </nav>
       <div className="nav-auth-meta">
         <span className="chip">
-          AI {aiEnabled === null ? "Unknown" : aiEnabled ? "On" : "Off"}
+          OpenAI {aiEnabled === null ? "Unknown" : aiEnabled ? "On" : "Off"}
         </span>
         <ThemeToggle />
         <Link className="nav-pill nav-pill-muted" href="/logout">

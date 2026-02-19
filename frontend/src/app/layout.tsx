@@ -16,7 +16,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "Market Ready",
-  description: "Proof-first career acceleration with AI market signals",
+  description: "Proof-first career acceleration with OpenAI-powered market signals",
 };
 
 export default function RootLayout({

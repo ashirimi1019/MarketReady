@@ -36,7 +36,7 @@ type WeeklyMilestoneStreak = {
 };
 
 const TICKER_ITEMS = [
-  "Software Eng: +15% demand for AI integration skills",
+  "Software Eng: +15% demand for OpenAI integration skills",
   "Product Design: shift toward spatial computing",
   "Cybersecurity: zero-trust verification is now a must-have",
   "Data Science: demand rising for production ML + analytics engineering",
@@ -66,16 +66,16 @@ const QUICK_LINKS = [
   },
   {
     title: "Interview Simulator",
-    text: "Practice AI interview questions tied to your submitted proofs.",
+    text: "Practice OpenAI interview questions tied to your submitted proofs.",
     href: "/student/interview",
   },
   {
-    title: "AI Resume Architect",
+    title: "OpenAI Resume Architect",
     text: "Generate ATS-ready resume drafts from your portal evidence.",
     href: "/student/resume-architect",
   },
   {
-    title: "AI Guide",
+    title: "OpenAI Guide",
     text: "Generate targeted recommendations on demand.",
     href: "/student/guide",
   },
@@ -117,7 +117,7 @@ export default function Home() {
 
   const runAudit = async () => {
     if (!isLoggedIn) {
-      setGuideError("Log in to run the AI audit.");
+      setGuideError("Log in to run the OpenAI audit.");
       return;
     }
     setGuideLoading(true);
@@ -133,7 +133,7 @@ export default function Home() {
       });
       setGuide(data);
     } catch (err) {
-      setGuideError(err instanceof Error ? err.message : "AI audit unavailable.");
+      setGuideError(err instanceof Error ? err.message : "OpenAI audit unavailable.");
     } finally {
       setGuideLoading(false);
     }
@@ -210,7 +210,9 @@ export default function Home() {
       </section>
 
       <section className="panel hero-stage">
-        <span className="hero-signal-pill">AI-Powered Verification Engine</span>
+        <span className="hero-signal-pill">
+          AI-Powered Verification Engine · Powered by OpenAI
+        </span>
         <h1 className="hero-headline">
           Stop <span className="hero-emphasis">guessing.</span>
           <br />
@@ -219,7 +221,7 @@ export default function Home() {
         <p className="hero-copy">
           {isLoggedIn
             ? `${displayName}, your roadmap is now evidence-driven. Audit progress, close high-impact gaps, and keep your proof vault market-ready.`
-            : "The platform that converts career progress into verifiable outcomes using live hiring signals, AI guidance, and proof-backed milestones."}
+            : "The platform that converts career progress into verifiable outcomes using live hiring signals, OpenAI-powered guidance, and proof-backed milestones."}
         </p>
         {isLoggedIn && (
           <p className="mt-3 text-sm text-[color:var(--muted)]">
@@ -255,9 +257,9 @@ export default function Home() {
             ✦
           </span>
           <div>
-            <h2 className="section-title">AI Market Auditor</h2>
+            <h2 className="section-title">AI Market Auditor · Powered by OpenAI</h2>
             <p className="section-subtitle">
-              Paste resume highlights or project evidence and generate targeted direction.
+              Paste resume highlights or project evidence and generate OpenAI-powered direction.
             </p>
           </div>
         </div>
