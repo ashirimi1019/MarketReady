@@ -23,6 +23,9 @@ export default function RegisterPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const passwordPolicyHint =
+    "Password must be at least 8 characters, include one uppercase letter, and one special character.";
+
   const handleRegister = async () => {
     if (!username.trim()) {
       setStatus("Username is required.");
@@ -33,7 +36,15 @@ export default function RegisterPage() {
       return;
     }
     if (password.length < 8) {
-      setStatus("Password must be at least 8 characters.");
+      setStatus(passwordPolicyHint);
+      return;
+    }
+    if (!/[A-Z]/.test(password)) {
+      setStatus(passwordPolicyHint);
+      return;
+    }
+    if (!/[^A-Za-z0-9]/.test(password)) {
+      setStatus(passwordPolicyHint);
       return;
     }
     if (password !== confirmPassword) {
@@ -105,6 +116,9 @@ export default function RegisterPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
+          <span className="mt-2 block text-xs text-[color:var(--muted)]">
+            {passwordPolicyHint}
+          </span>
         </label>
         <label className="text-sm text-[color:var(--muted)]">
           Confirm Password

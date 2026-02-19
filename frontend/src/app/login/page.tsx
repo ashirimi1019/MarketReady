@@ -29,6 +29,8 @@ export default function LoginPage() {
   const [forgotIdentity, setForgotIdentity] = useState("");
   const [resetCode, setResetCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const passwordPolicyHint =
+    "Password must be at least 8 characters, include one uppercase letter, and one special character.";
 
   const handleLogin = async () => {
     if (!username.trim()) {
@@ -89,6 +91,10 @@ export default function LoginPage() {
   const handleResetPassword = async () => {
     if (!username.trim() || !resetCode.trim() || !newPassword.trim()) {
       setStatus("Enter username, reset code, and new password.");
+      return;
+    }
+    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+      setStatus(passwordPolicyHint);
       return;
     }
     try {
@@ -176,6 +182,9 @@ export default function LoginPage() {
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
           />
+          <span className="mt-2 block text-xs text-[color:var(--muted)]">
+            {passwordPolicyHint}
+          </span>
         </label>
       </div>
       <div className="mt-4">

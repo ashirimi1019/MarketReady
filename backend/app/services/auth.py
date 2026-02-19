@@ -7,10 +7,12 @@ import secrets
 import string
 import time
 from datetime import datetime, timedelta
+import re
 
 from app.core.config import settings
 
 PBKDF2_ITERATIONS = 120_000
+SPECIAL_CHAR_PATTERN = re.compile(r"[^A-Za-z0-9]")
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -31,6 +33,17 @@ def hash_password(password: str) -> tuple[str, str]:
         PBKDF2_ITERATIONS,
     )
     return _b64url_encode(salt), _b64url_encode(digest)
+
+
+def password_policy_issues(password: str) -> list[str]:
+    issues: list[str] = []
+    if len(password) < 8:
+        issues.append("at least 8 characters")
+    if not any(ch.isupper() for ch in password):
+        issues.append("at least one uppercase letter")
+    if not SPECIAL_CHAR_PATTERN.search(password):
+        issues.append("at least one special character")
+    return issues
 
 
 def verify_password(password: str, salt_b64: str, digest_b64: str) -> bool:

@@ -26,6 +26,7 @@ from app.services.auth import (
     hash_password,
     hash_token,
     one_time_code,
+    password_policy_issues,
     verify_password,
 )
 from app.services.mailer import (
@@ -180,8 +181,18 @@ def register(payload: AuthRegisterIn, request: Request, db: Session = Depends(ge
     email = _normalize_email(payload.email)
     if len(username) < 3:
         raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
-    if len(payload.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    password_issues = password_policy_issues(payload.password)
+    if password_issues:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Password must include "
+                + ", ".join(password_issues[:-1])
+                + (", and " if len(password_issues) > 1 else "")
+                + password_issues[-1]
+                + "."
+            ),
+        )
     if settings.auth_require_email_verification and not email:
         raise HTTPException(status_code=400, detail="Email is required for account verification")
 
@@ -459,8 +470,18 @@ def forgot_password(payload: AuthPasswordForgotIn, request: Request, db: Session
 @router.post("/password/reset", response_model=AuthActionOut)
 def reset_password(payload: AuthPasswordResetIn, request: Request, db: Session = Depends(get_db)):
     username = _normalize_username(payload.username)
-    if len(payload.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    password_issues = password_policy_issues(payload.new_password)
+    if password_issues:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Password must include "
+                + ", ".join(password_issues[:-1])
+                + (", and " if len(password_issues) > 1 else "")
+                + password_issues[-1]
+                + "."
+            ),
+        )
 
     account = db.query(StudentAccount).filter(StudentAccount.username == username).one_or_none()
     if not account:
