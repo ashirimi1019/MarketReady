@@ -147,46 +147,68 @@ export default function Home() {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
-    apiGet<Proof[]>("/user/proofs", headers)
-      .then((proofs) => {
+    if (!isLoggedIn) {
+      setProofStats({ submitted: 0, verified: 0, rejected: 0 });
+      setChecklistCount(null);
+      setReadinessScore(null);
+      setReadinessRank(null);
+      setWeeklyStreak(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDashboard = async () => {
+      const [
+        proofsResult,
+        checklistResult,
+        readinessResult,
+        rankResult,
+        streakResult,
+      ] = await Promise.allSettled([
+        apiGet<Proof[]>("/user/proofs", headers),
+        apiGet<ChecklistItem[]>("/user/checklist", headers),
+        apiGet<Readiness>("/user/readiness", headers),
+        apiGet<ReadinessRank>("/user/readiness/rank", headers),
+        apiGet<WeeklyMilestoneStreak>("/user/streak", headers),
+      ]);
+
+      if (cancelled) return;
+
+      if (proofsResult.status === "fulfilled") {
         const stats = { submitted: 0, verified: 0, rejected: 0 };
-        proofs.forEach((proof) => {
+        proofsResult.value.forEach((proof) => {
           if (proof.status === "verified") stats.verified += 1;
           else if (proof.status === "rejected") stats.rejected += 1;
           else stats.submitted += 1;
         });
         setProofStats(stats);
-      })
-      .catch(() => setProofStats({ submitted: 0, verified: 0, rejected: 0 }));
-  }, [headers, isLoggedIn]);
+      } else {
+        setProofStats({ submitted: 0, verified: 0, rejected: 0 });
+      }
 
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    apiGet<ChecklistItem[]>("/user/checklist", headers)
-      .then((items) => setChecklistCount(items.length))
-      .catch(() => setChecklistCount(null));
-  }, [headers, isLoggedIn]);
+      setChecklistCount(
+        checklistResult.status === "fulfilled" ? checklistResult.value.length : null
+      );
+      setReadinessScore(
+        readinessResult.status === "fulfilled" ? readinessResult.value.score : null
+      );
+      setReadinessRank(rankResult.status === "fulfilled" ? rankResult.value : null);
+      setWeeklyStreak(streakResult.status === "fulfilled" ? streakResult.value : null);
+    };
 
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    apiGet<Readiness>("/user/readiness", headers)
-      .then((readiness) => setReadinessScore(readiness.score))
-      .catch(() => setReadinessScore(null));
-  }, [headers, isLoggedIn]);
+    loadDashboard().catch(() => {
+      if (cancelled) return;
+      setProofStats({ submitted: 0, verified: 0, rejected: 0 });
+      setChecklistCount(null);
+      setReadinessScore(null);
+      setReadinessRank(null);
+      setWeeklyStreak(null);
+    });
 
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    apiGet<ReadinessRank>("/user/readiness/rank", headers)
-      .then(setReadinessRank)
-      .catch(() => setReadinessRank(null));
-  }, [headers, isLoggedIn]);
-
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    apiGet<WeeklyMilestoneStreak>("/user/streak", headers)
-      .then(setWeeklyStreak)
-      .catch(() => setWeeklyStreak(null));
+    return () => {
+      cancelled = true;
+    };
   }, [headers, isLoggedIn]);
 
   const versionedSkills = isLoggedIn ? checklistCount ?? 0 : 14;

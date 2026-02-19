@@ -3,14 +3,17 @@
 import { useSession } from "@/lib/session";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, apiSend } from "@/lib/api";
 import { formatDisplayName } from "@/lib/name";
 import ThemeToggle from "@/components/ThemeToggle";
+import { useRouter } from "next/navigation";
 
 export default function NavBar() {
-  const { username, isLoggedIn } = useSession();
+  const { username, isLoggedIn, logout, refreshToken } = useSession();
   const displayName = formatDisplayName(username);
+  const router = useRouter();
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE}/meta/ai`)
@@ -22,6 +25,30 @@ export default function NavBar() {
       })
       .catch(() => setAiEnabled(null));
   }, []);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      if (refreshToken) {
+        await apiSend("/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      }
+    } catch {
+      // If API logout fails, still clear local session.
+    } finally {
+      if (username) {
+        window.localStorage.removeItem(`mp_selection_${username}`);
+      }
+      logout();
+      window.localStorage.removeItem("mp_admin_token");
+      router.push("/login");
+      setLoggingOut(false);
+    }
+  };
 
   if (!isLoggedIn) {
     return (
@@ -72,9 +99,9 @@ export default function NavBar() {
           OpenAI {aiEnabled === null ? "Unknown" : aiEnabled ? "On" : "Off"}
         </span>
         <ThemeToggle />
-        <Link className="nav-pill nav-pill-muted" href="/logout">
-          Logout
-        </Link>
+        <button className="nav-pill nav-pill-muted" onClick={handleLogout} disabled={loggingOut}>
+          {loggingOut ? "Logging out..." : "Logout"}
+        </button>
       </div>
     </header>
   );

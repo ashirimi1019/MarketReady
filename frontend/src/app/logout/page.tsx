@@ -10,7 +10,6 @@ export default function LogoutPage() {
   const [, setAuthToken] = useLocalStorage("mp_auth_token", "");
   const [, setRefreshToken] = useLocalStorage("mp_refresh_token", "");
   const [, setAdminToken] = useLocalStorage("mp_admin_token", "");
-  const [, setLoggedIn] = useLocalStorage("mp_logged_in", "false");
   const { logout, username, refreshToken } = useSession();
 
   useEffect(() => {
@@ -28,9 +27,8 @@ export default function LogoutPage() {
     setAuthToken("");
     setRefreshToken("");
     setAdminToken("");
-    setLoggedIn("false");
     logout();
-  }, [setUsername, setAuthToken, setRefreshToken, setAdminToken, setLoggedIn, logout, username, refreshToken]);
+  }, [setUsername, setAuthToken, setRefreshToken, setAdminToken, logout, username, refreshToken]);
 
   return (
     <section className="panel max-w-xl">
