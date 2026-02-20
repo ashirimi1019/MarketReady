@@ -3,12 +3,24 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.api.routes import auth, majors, user, proofs, readiness, timeline, admin, ai, market, meta
 from app.core.config import settings
+from app.services.market_automation import start_market_scheduler, stop_market_scheduler
 
-app = FastAPI(title="Career Pathways API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await start_market_scheduler()
+    try:
+        yield
+    finally:
+        await stop_market_scheduler()
+
+
+app = FastAPI(title="Career Pathways API", version="0.1.0", lifespan=lifespan)
 
 origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
 app.add_middleware(

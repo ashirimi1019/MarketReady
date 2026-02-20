@@ -565,6 +565,44 @@ class MarketExternalIngestOut(BaseModel):
     created_signals: int
 
 
+class MarketAutomationRunIn(BaseModel):
+    dry_run: bool = False
+    trigger: Optional[str] = None
+
+
+class MarketAutomationOut(BaseModel):
+    ok: bool
+    trigger: str
+    dry_run: bool
+    started_at: datetime
+    finished_at: datetime
+    duration_seconds: float
+    providers_requested: List[str] = Field(default_factory=list)
+    providers_used: List[str] = Field(default_factory=list)
+    pathways_considered: int = 0
+    ingestions: int = 0
+    signals_created: int = 0
+    proposals_created: int = 0
+    proposals_skipped: int = 0
+    warnings: List[str] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+
+
+class MarketAutomationStatusOut(BaseModel):
+    enabled: bool
+    scheduler_running: bool
+    interval_minutes: int
+    providers_requested: List[str] = Field(default_factory=list)
+    providers_available: List[str] = Field(default_factory=list)
+    providers_missing: List[str] = Field(default_factory=list)
+    role_families: List[str] = Field(default_factory=list)
+    pathway_filters: List[str] = Field(default_factory=list)
+    invalid_pathway_filters: List[str] = Field(default_factory=list)
+    last_cycle_at: Optional[datetime] = None
+    last_cycle_metadata: Optional[dict[str, Any]] = None
+    last_scheduler_error: Optional[str] = None
+
+
 class MarketSignalIn(BaseModel):
     pathway_id: Optional[UUID] = None
     skill_id: Optional[UUID] = None

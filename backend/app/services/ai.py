@@ -411,8 +411,14 @@ def _evaluate_resume_matches(
                     }
                 )
             return matches, "ai"
-        except Exception:
-            pass
+        except Exception as exc:
+            _raise_if_ai_strict(
+                f"AI strict mode: resume requirement matching failed ({_truncate(str(exc), limit=220)})."
+            )
+    else:
+        _raise_if_ai_strict(
+            "AI strict mode: resume requirement matching requires a configured AI provider."
+        )
 
     fallback = _resume_keyword_fallback(resume_text, items)
     return fallback, "rules"
@@ -646,8 +652,14 @@ def _map_evidence_to_items(
                 seen_items.add(row["item_id"])
                 deduped.append(row)
             return deduped, "ai"
-        except Exception:
-            pass
+        except Exception as exc:
+            _raise_if_ai_strict(
+                f"AI strict mode: evidence mapping failed ({_truncate(str(exc), limit=220)})."
+            )
+    else:
+        _raise_if_ai_strict(
+            "AI strict mode: evidence mapping requires a configured AI provider."
+        )
 
     fallback = _rule_map_evidence_to_items(
         evidence_rows=evidence_rows,
@@ -1333,6 +1345,15 @@ def ai_is_configured() -> bool:
     return bool(settings.ai_enabled and api_key and model)
 
 
+def ai_strict_mode_enabled() -> bool:
+    return bool(settings.ai_strict_mode)
+
+
+def _raise_if_ai_strict(reason: str) -> None:
+    if ai_strict_mode_enabled():
+        raise RuntimeError(reason)
+
+
 def get_active_ai_provider() -> str:
     return _provider_config()[0]
 
@@ -1347,6 +1368,7 @@ def ai_runtime_diagnostics() -> dict[str, Any]:
     configured = ai_is_configured()
     result: dict[str, Any] = {
         "configured": configured,
+        "strict_mode": ai_strict_mode_enabled(),
         "provider": provider,
         "model": model,
         "ok": False,
@@ -1985,6 +2007,10 @@ def generate_student_guidance(
     if not selection:
         market_context = _build_global_market_context(db)
         ai_error_message: str | None = None
+        if not ai_is_configured():
+            _raise_if_ai_strict(
+                "AI strict mode: /user/ai/guide requires AI provider configuration."
+            )
         if ai_is_configured():
             try:
                 response = _generate_general_career_guidance_with_llm(
@@ -2018,6 +2044,10 @@ def generate_student_guidance(
                 return response
             except Exception as exc:
                 ai_error_message = str(exc)
+                _raise_if_ai_strict(
+                    "AI strict mode: general career guidance generation failed. "
+                    f"Reason: {_truncate(ai_error_message, limit=220)}"
+                )
 
         fallback = _rules_general_career_guidance(
             question=question,
@@ -2161,6 +2191,10 @@ def generate_student_guidance(
                 suggested_proof_types.append(proof_type)
 
     ai_error_message: str | None = None
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: /user/ai/guide requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             response = _generate_student_guidance_with_llm(
@@ -2258,6 +2292,10 @@ def generate_student_guidance(
         except Exception as exc:
             # Continue to rules fallback below.
             ai_error_message = str(exc)
+            _raise_if_ai_strict(
+                "AI strict mode: student guide generation failed. "
+                f"Reason: {_truncate(ai_error_message, limit=220)}"
+            )
 
     if top_gaps:
         explanation = (
@@ -2354,6 +2392,10 @@ def generate_market_proposal_from_signals(
             "uncertainty": "No signals provided.",
         }
 
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: market proposal generation requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             response = _generate_market_proposal_with_llm(
@@ -2371,8 +2413,11 @@ def generate_market_proposal_from_signals(
                 "diff": diff,
                 "uncertainty": _coerce_optional_text(response.get("uncertainty")),
             }
-        except Exception:
-            pass
+        except Exception as exc:
+            _raise_if_ai_strict(
+                "AI strict mode: market proposal generation failed. "
+                f"Reason: {_truncate(str(exc), limit=220)}"
+            )
 
     skill_names = _unique_list(
         [
@@ -2409,6 +2454,10 @@ def generate_market_proposal_from_signals(
 
 
 def generate_admin_summary(db: Session, source_text: str, purpose: str | None = None) -> dict:
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: admin summary requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             response = _generate_admin_summary_with_llm(source_text, purpose)
@@ -2422,9 +2471,11 @@ def generate_admin_summary(db: Session, source_text: str, purpose: str | None = 
                 output=response.get("summary"),
             )
             return response
-        except Exception:
-            # Continue to rules fallback below.
-            pass
+        except Exception as exc:
+            _raise_if_ai_strict(
+                "AI strict mode: admin summary generation failed. "
+                f"Reason: {_truncate(str(exc), limit=220)}"
+            )
 
     text = source_text.strip()
     sentences = [s.strip() for s in text.split(".") if s.strip()]
@@ -2699,6 +2750,10 @@ def verify_proof_with_ai(
     metadata: dict | None,
     profile: StudentProfile | None,
 ) -> dict:
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: proof verification requires AI provider configuration."
+        )
     certificate_mode = _is_certificate_proof_type(proof_type)
     evidence_text = None
     evidence_meta: dict[str, Any] = {}
@@ -2764,7 +2819,11 @@ def verify_proof_with_ai(
     }
     try:
         raw = _call_llm(system, json.dumps(payload))
-    except Exception:
+    except Exception as exc:
+        _raise_if_ai_strict(
+            "AI strict mode: proof verification call failed. "
+            f"Reason: {_truncate(str(exc), limit=220)}"
+        )
         return {
             "meets_requirement": False,
             "confidence": 0.0,
@@ -2775,6 +2834,9 @@ def verify_proof_with_ai(
 
     parsed = _safe_json(raw)
     if not parsed:
+        _raise_if_ai_strict(
+            "AI strict mode: proof verification response was not parseable JSON."
+        )
         return {
             "meets_requirement": False,
             "confidence": 0.0,

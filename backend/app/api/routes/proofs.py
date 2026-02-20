@@ -109,6 +109,11 @@ def register_proof(
             status_code=400,
             detail="Certificate proofs require a document upload. Upload a file instead of submitting a URL.",
         )
+    if certificate_mode and settings.ai_strict_mode and not ai_is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="AI strict mode is enabled; certificate verification requires active AI configuration.",
+        )
 
     proof = Proof(
         user_id=user_id,
@@ -124,17 +129,25 @@ def register_proof(
         )
 
     db.add(proof)
-    db.commit()
-    db.refresh(proof)
+    if not certificate_mode:
+        db.commit()
+        db.refresh(proof)
+        return _serialize_proof(proof)
+
+    db.flush()
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
     if certificate_mode and ai_is_configured() and checklist_item:
-        verdict = verify_proof_with_ai(
-            checklist_item=checklist_item,
-            proof_type=payload.proof_type,
-            url=payload.url,
-            metadata=payload.metadata,
-            profile=profile,
-        )
+        try:
+            verdict = verify_proof_with_ai(
+                checklist_item=checklist_item,
+                proof_type=payload.proof_type,
+                url=payload.url,
+                metadata=payload.metadata,
+                profile=profile,
+            )
+        except RuntimeError as exc:
+            db.rollback()
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         confidence = verdict.get("confidence", 0.0)
         meets = verdict.get("meets_requirement", False)
         decision = verdict.get("decision", "needs_more_evidence")
@@ -177,4 +190,9 @@ def register_proof(
             model=get_active_ai_model(),
             output=note,
         )
+    else:
+        proof.status = "submitted"
+        proof.review_note = "Queued for AI verification."
+        db.commit()
+        db.refresh(proof)
     return _serialize_proof(proof)

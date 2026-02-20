@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.database import engine
 from app.services.ai import (
     ai_is_configured,
+    ai_strict_mode_enabled,
     ai_runtime_diagnostics,
     get_active_ai_model,
     get_active_ai_provider,
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/meta")
 def ai_meta():
     return {
         "ai_enabled": ai_is_configured(),
+        "ai_strict_mode": ai_strict_mode_enabled(),
         "model": get_active_ai_model(),
         "provider": get_active_ai_provider(),
     }
@@ -59,6 +61,7 @@ def health_meta():
         "database": {"ok": db_ok, "error": db_error},
         "ai": {
             "enabled": ai_is_configured(),
+            "strict_mode": ai_strict_mode_enabled(),
             "provider": get_active_ai_provider(),
             "model": get_active_ai_model(),
         },

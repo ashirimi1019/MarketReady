@@ -6,12 +6,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.entities import StudentProfile
+from app.models.entities import MarketSignal, Skill, StudentProfile
 from app.services.ai import (
     _call_llm,
     _log_ai_audit,
     _safe_json,
+    _truncate,
     ai_is_configured,
+    ai_strict_mode_enabled,
     get_active_ai_model,
 )
 
@@ -50,6 +52,43 @@ def _safe_optional_text(value: Any, *, max_chars: int = 600) -> str | None:
     if not text:
         return None
     return text[:max_chars]
+
+
+def _raise_if_ai_strict(reason: str) -> None:
+    if ai_strict_mode_enabled():
+        raise RuntimeError(reason)
+
+
+def _market_snapshot(db: Session, *, role_hint: str | None = None, limit: int = 80) -> dict[str, Any]:
+    query = db.query(MarketSignal, Skill).outerjoin(Skill, MarketSignal.skill_id == Skill.id)
+    hint = (role_hint or "").strip().lower()
+    if hint:
+        query = query.filter(MarketSignal.role_family.ilike(f"%{hint}%"))
+    rows = (
+        query.order_by(MarketSignal.window_end.desc().nullslast(), MarketSignal.id.desc())
+        .limit(max(10, min(limit, 200)))
+        .all()
+    )
+    if not rows:
+        return {"signal_count": 0, "top_skills": [], "top_roles": []}
+
+    skill_counts: dict[str, int] = {}
+    role_counts: dict[str, int] = {}
+    for signal, skill in rows:
+        label = ((skill.name if skill else None) or "").strip().lower()
+        if label:
+            skill_counts[label] = skill_counts.get(label, 0) + max(signal.source_count or 1, 1)
+        role = (signal.role_family or "").strip().lower()
+        if role:
+            role_counts[role] = role_counts.get(role, 0) + max(signal.source_count or 1, 1)
+
+    top_skills = [name for name, _ in sorted(skill_counts.items(), key=lambda row: row[1], reverse=True)[:8]]
+    top_roles = [name for name, _ in sorted(role_counts.items(), key=lambda row: row[1], reverse=True)[:6]]
+    return {
+        "signal_count": len(rows),
+        "top_skills": top_skills,
+        "top_roles": top_roles,
+    }
 
 
 def _role_track(*parts: str | None) -> str:
@@ -301,6 +340,7 @@ def generate_if_i_were_you(
 ) -> dict[str, Any]:
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
     track = _role_track(industry, internship_history)
+    market_context = _market_snapshot(db, role_hint=industry)
     payload = {
         "gpa": gpa,
         "internship_history": internship_history,
@@ -310,12 +350,18 @@ def generate_if_i_were_you(
             "university": profile.university if profile else None,
             "semester": profile.semester if profile else None,
         },
+        "market_context": market_context,
     }
 
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: /user/ai/if-i-were-you requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             system = (
                 "You are an AI career strategist in 'If I Were You' mode. "
+                "Use market_context to align recommendations with current demand trends. "
                 "Use realistic steps only. Return JSON with keys: summary, fastest_path (max 4), "
                 "realistic_next_moves (max 4), avoid_now (max 3), recommended_certificates (max 5), uncertainty."
             )
@@ -343,6 +389,10 @@ def generate_if_i_were_you(
                 return response
         except Exception as exc:
             reason = str(exc)
+            _raise_if_ai_strict(
+                "AI strict mode: /user/ai/if-i-were-you generation failed. "
+                f"Reason: {_truncate(reason, limit=220)}"
+            )
         else:
             reason = ""
     else:
@@ -393,20 +443,27 @@ def generate_certification_roi(
     max_budget_usd: int | None = None,
 ) -> dict[str, Any]:
     track = _role_track(target_role, current_skills)
+    market_context = _market_snapshot(db, role_hint=target_role)
     payload = {
         "target_role": target_role,
         "current_skills": current_skills,
         "location": location,
         "max_budget_usd": max_budget_usd,
         "role_track_hint": track,
+        "market_context": market_context,
     }
 
     fallback = _fallback_cert_roi_options(track)
 
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: /user/ai/certification-roi requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             system = (
                 "You are an AI certification ROI calculator. "
+                "Use market_context to prioritize certifications by demand trend and role relevance. "
                 "Return JSON with keys: target_role, top_options (max 5), winner, recommendation, uncertainty. "
                 "Each top_options row must include certificate, cost_usd, time_required, entry_salary_range, "
                 "difficulty_level, demand_trend, roi_score (1-100), why_it_helps."
@@ -436,7 +493,13 @@ def generate_certification_roi(
                             "why_it_helps": str(item.get("why_it_helps") or "Improves role alignment."),
                         }
                     )
-                rows = rows[:5] if rows else fallback[:3]
+                if rows:
+                    rows = rows[:5]
+                else:
+                    _raise_if_ai_strict(
+                        "AI strict mode: /user/ai/certification-roi returned no usable top_options."
+                    )
+                    rows = fallback[:3]
                 response = {
                     "target_role": str(parsed.get("target_role") or target_role or "").strip() or None,
                     "top_options": rows,
@@ -455,6 +518,10 @@ def generate_certification_roi(
                 return response
         except Exception as exc:
             reason = str(exc)
+            _raise_if_ai_strict(
+                "AI strict mode: /user/ai/certification-roi generation failed. "
+                f"Reason: {_truncate(reason, limit=220)}"
+            )
         else:
             reason = ""
     else:
@@ -491,11 +558,20 @@ def generate_emotional_reset(
     user_id: str,
     story_context: str | None = None,
 ) -> dict[str, Any]:
-    payload = {"story_context": story_context, "prompt": "Graduated But Feel Behind?"}
+    payload = {
+        "story_context": story_context,
+        "prompt": "Graduated But Feel Behind?",
+        "market_context": _market_snapshot(db),
+    }
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: /user/ai/emotional-reset requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             system = (
                 "You are an empathetic career coach. "
+                "Use market_context to keep reassurance practical and tied to current opportunity demand. "
                 "Return JSON with keys: title, story, reframe, action_plan (max 5), uncertainty."
             )
             parsed = _safe_json(_call_llm(system, json.dumps(payload)))
@@ -528,6 +604,10 @@ def generate_emotional_reset(
                 return response
         except Exception as exc:
             reason = str(exc)
+            _raise_if_ai_strict(
+                "AI strict mode: /user/ai/emotional-reset generation failed. "
+                f"Reason: {_truncate(reason, limit=220)}"
+            )
         else:
             reason = ""
     else:
@@ -564,18 +644,25 @@ def generate_rebuild_90_day_plan(
     hours_per_week: int = 8,
 ) -> dict[str, Any]:
     track = _role_track(target_job, current_skills)
+    market_context = _market_snapshot(db, role_hint=target_job)
     payload = {
         "current_skills": current_skills,
         "target_job": target_job,
         "location": location,
         "hours_per_week": hours_per_week,
         "track": track,
+        "market_context": market_context,
     }
 
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: /user/ai/rebuild-90-day requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             system = (
                 "You generate a structured 90-day rebuild plan for career readiness. "
+                "Use market_context to prioritize high-demand skills and certificates. "
                 "Return JSON with keys: summary, day_0_30 (max 6), day_31_60 (max 6), day_61_90 (max 6), "
                 "weekly_targets (max 8), portfolio_targets (max 5), recommended_certificates (max 5), uncertainty."
             )
@@ -605,6 +692,10 @@ def generate_rebuild_90_day_plan(
                 return response
         except Exception as exc:
             reason = str(exc)
+            _raise_if_ai_strict(
+                "AI strict mode: /user/ai/rebuild-90-day generation failed. "
+                f"Reason: {_truncate(reason, limit=220)}"
+            )
         else:
             reason = ""
     else:
@@ -651,11 +742,20 @@ def generate_college_gap_playbook(
     target_job: str | None = None,
     current_skills: str | None = None,
 ) -> dict[str, Any]:
-    payload = {"target_job": target_job, "current_skills": current_skills}
+    payload = {
+        "target_job": target_job,
+        "current_skills": current_skills,
+        "market_context": _market_snapshot(db, role_hint=target_job),
+    }
+    if not ai_is_configured():
+        _raise_if_ai_strict(
+            "AI strict mode: /user/ai/college-gap-playbook requires AI provider configuration."
+        )
     if ai_is_configured():
         try:
             system = (
                 "You are an AI coach creating a practical 'College Did not Teach Me This' playbook. "
+                "Use market_context so advice reflects current hiring demand. "
                 "Return JSON with keys: job_description_playbook (max 6), reverse_engineer_skills (max 6), "
                 "project_that_recruiters_care (max 6), networking_strategy (max 6), uncertainty."
             )
@@ -679,6 +779,10 @@ def generate_college_gap_playbook(
                 return response
         except Exception as exc:
             reason = str(exc)
+            _raise_if_ai_strict(
+                "AI strict mode: /user/ai/college-gap-playbook generation failed. "
+                f"Reason: {_truncate(reason, limit=220)}"
+            )
         else:
             reason = ""
     else:

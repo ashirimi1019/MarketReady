@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     admin_token: str | None = None
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     ai_enabled: bool = False
+    ai_strict_mode: bool = False
     llm_provider: str = "openai"
     groq_api_key: str | None = None
     groq_model: str = "llama-3.1-8b-instant"
@@ -61,6 +62,16 @@ class Settings(BaseSettings):
     onet_password: str | None = None
     careeronestop_api_key: str | None = None
     careeronestop_user_id: str | None = None
+    market_auto_enabled: bool = False
+    market_auto_run_on_startup: bool = False
+    market_auto_interval_minutes: int = 360
+    market_auto_provider_list: str = "adzuna,onet,careeronestop"
+    market_auto_role_families: str = ""
+    market_auto_pathway_ids: str = ""
+    market_auto_signal_limit: int = 25
+    market_auto_proposal_lookback_days: int = 30
+    market_auto_proposal_min_signals: int = 10
+    market_auto_proposal_cooldown_hours: int = 24
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -69,5 +80,16 @@ class Settings(BaseSettings):
         if isinstance(value, str) and value.startswith("postgres://"):
             return "postgresql://" + value[len("postgres://"):]
         return value
+
+    @field_validator(
+        "market_auto_interval_minutes",
+        "market_auto_signal_limit",
+        "market_auto_proposal_lookback_days",
+        "market_auto_proposal_min_signals",
+        "market_auto_proposal_cooldown_hours",
+    )
+    @classmethod
+    def ensure_positive(cls, value: int) -> int:
+        return max(1, int(value))
 
 settings = Settings()

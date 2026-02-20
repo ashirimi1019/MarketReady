@@ -9,6 +9,9 @@ from app.schemas.api import (
     MarketIngestOut,
     MarketExternalIngestIn,
     MarketExternalIngestOut,
+    MarketAutomationRunIn,
+    MarketAutomationOut,
+    MarketAutomationStatusOut,
     MarketSignalsIn,
     MarketSignalsOut,
     MarketSignalOut,
@@ -22,6 +25,10 @@ from app.services.market_intel import (
     record_raw_ingestion,
     record_signals,
     propose_checklist_update,
+)
+from app.services.market_automation import (
+    market_automation_status,
+    run_market_automation_cycle,
 )
 from app.services.market_connectors import fetch_external_signals
 
@@ -106,6 +113,29 @@ def ingest_external_market_data(
         "ingested": len(signals),
         "created_signals": created,
     }
+
+
+@router.get("/automation/status", response_model=MarketAutomationStatusOut)
+def get_market_automation_status(db: Session = Depends(get_db)):
+    return market_automation_status(db)
+
+
+@router.post("/automation/run", response_model=MarketAutomationOut)
+def run_market_automation(
+    payload: MarketAutomationRunIn,
+    db: Session = Depends(get_db),
+):
+    trigger = (payload.trigger or "manual").strip() or "manual"
+    try:
+        return run_market_automation_cycle(
+            db,
+            dry_run=payload.dry_run,
+            trigger=trigger[:60],
+        )
+    except RuntimeError as exc:
+        detail = str(exc)
+        status_code = 409 if "already running" in detail.lower() else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
 
 
 @router.get("/signals", response_model=list[MarketSignalOut])

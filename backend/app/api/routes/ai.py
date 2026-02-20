@@ -67,6 +67,8 @@ def student_ai_guide(
             question=payload.question,
             context_text=payload.context_text,
         )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -78,14 +80,17 @@ def student_ai_if_i_were_you(
     db: Session = Depends(get_db),
 ):
     ai_rate_limiter.check(f"user:{user_id}:if-i-were-you")
-    return generate_if_i_were_you(
-        db,
-        user_id=user_id,
-        gpa=payload.gpa,
-        internship_history=payload.internship_history,
-        industry=payload.industry,
-        location=payload.location,
-    )
+    try:
+        return generate_if_i_were_you(
+            db,
+            user_id=user_id,
+            gpa=payload.gpa,
+            internship_history=payload.internship_history,
+            industry=payload.industry,
+            location=payload.location,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/user/ai/certification-roi", response_model=AiCertRoiOut)
@@ -95,14 +100,17 @@ def student_ai_certification_roi(
     db: Session = Depends(get_db),
 ):
     ai_rate_limiter.check(f"user:{user_id}:certification-roi")
-    return generate_certification_roi(
-        db,
-        user_id=user_id,
-        target_role=payload.target_role,
-        current_skills=payload.current_skills,
-        location=payload.location,
-        max_budget_usd=payload.max_budget_usd,
-    )
+    try:
+        return generate_certification_roi(
+            db,
+            user_id=user_id,
+            target_role=payload.target_role,
+            current_skills=payload.current_skills,
+            location=payload.location,
+            max_budget_usd=payload.max_budget_usd,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/user/ai/emotional-reset", response_model=AiEmotionalResetOut)
@@ -112,11 +120,14 @@ def student_ai_emotional_reset(
     db: Session = Depends(get_db),
 ):
     ai_rate_limiter.check(f"user:{user_id}:emotional-reset")
-    return generate_emotional_reset(
-        db,
-        user_id=user_id,
-        story_context=payload.story_context,
-    )
+    try:
+        return generate_emotional_reset(
+            db,
+            user_id=user_id,
+            story_context=payload.story_context,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/user/ai/rebuild-90-day", response_model=AiRebuildPlanOut)
@@ -126,14 +137,17 @@ def student_ai_rebuild_90_day(
     db: Session = Depends(get_db),
 ):
     ai_rate_limiter.check(f"user:{user_id}:rebuild-90-day")
-    return generate_rebuild_90_day_plan(
-        db,
-        user_id=user_id,
-        current_skills=payload.current_skills,
-        target_job=payload.target_job,
-        location=payload.location,
-        hours_per_week=payload.hours_per_week or 8,
-    )
+    try:
+        return generate_rebuild_90_day_plan(
+            db,
+            user_id=user_id,
+            current_skills=payload.current_skills,
+            target_job=payload.target_job,
+            location=payload.location,
+            hours_per_week=payload.hours_per_week or 8,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/user/ai/college-gap-playbook", response_model=AiCollegeGapOut)
@@ -143,12 +157,15 @@ def student_ai_college_gap_playbook(
     db: Session = Depends(get_db),
 ):
     ai_rate_limiter.check(f"user:{user_id}:college-gap-playbook")
-    return generate_college_gap_playbook(
-        db,
-        user_id=user_id,
-        target_job=payload.target_job,
-        current_skills=payload.current_skills,
-    )
+    try:
+        return generate_college_gap_playbook(
+            db,
+            user_id=user_id,
+            target_job=payload.target_job,
+            current_skills=payload.current_skills,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/user/ai/evidence-map", response_model=AiEvidenceMapOut)
@@ -157,7 +174,10 @@ def student_ai_evidence_mapper(
     db: Session = Depends(get_db),
 ):
     ai_rate_limiter.check(f"user:{user_id}:evidence-map")
-    return sync_evidence_requirement_matches(db, user_id)
+    try:
+        return sync_evidence_requirement_matches(db, user_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/user/ai/guide/feedback", response_model=AiGuideFeedbackOut)
@@ -192,6 +212,8 @@ def student_ai_interview_create_session(
             job_description=payload.job_description,
             question_count=payload.question_count,
         )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -238,6 +260,8 @@ def student_ai_interview_submit_response(
             answer_text=payload.answer_text,
             video_url=payload.video_url,
         )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -256,6 +280,8 @@ def student_ai_resume_architect_generate(
             target_role=payload.target_role,
             job_description=payload.job_description,
         )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -272,4 +298,7 @@ def student_ai_resume_architect_list(
 @router.post("/admin/ai/summarize", response_model=AdminAiSummaryOut, dependencies=[Depends(require_admin)])
 def admin_ai_summary(payload: AdminAiSummaryIn, db: Session = Depends(get_db)):
     ai_rate_limiter.check("admin")
-    return generate_admin_summary(db, payload.source_text, payload.purpose)
+    try:
+        return generate_admin_summary(db, payload.source_text, payload.purpose)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

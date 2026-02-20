@@ -84,9 +84,12 @@ Set environment variables:
 - `CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://marketready.netlify.app`
 - `AUTH_REQUIRE_EMAIL_VERIFICATION=false`
 - `AI_ENABLED=true` (if using AI in production)
+- `AI_STRICT_MODE=true` (forces real AI responses; disables rules fallback)
 - `LLM_PROVIDER=openai` (or groq)
 - `OPENAI_API_KEY` (if OpenAI enabled)
-- `OPENAI_MODEL=gpt-4.1-nano`
+- `OPENAI_MODEL=gpt-5-mini`
+- `LLM_TIMEOUT_SECONDS=90`
+- `LLM_MAX_RETRIES=3`
 
 S3 vars (if using uploads):
 
@@ -96,12 +99,25 @@ S3 vars (if using uploads):
 - `S3_REGION=us-east-1`
 - `S3_PRESIGN_EXPIRY_SECONDS=900`
 
+Optional market automation (safe defaults when omitted):
+
+- `MARKET_AUTO_ENABLED=true`
+- `MARKET_AUTO_INTERVAL_MINUTES=360`
+- `MARKET_AUTO_RUN_ON_STARTUP=false`
+- `MARKET_AUTO_PROVIDER_LIST=adzuna,onet,careeronestop`
+- `MARKET_AUTO_ROLE_FAMILIES=software engineer,data analyst,cybersecurity analyst`
+- `MARKET_AUTO_SIGNAL_LIMIT=25`
+- `MARKET_AUTO_PROPOSAL_LOOKBACK_DAYS=30`
+- `MARKET_AUTO_PROPOSAL_MIN_SIGNALS=10`
+- `MARKET_AUTO_PROPOSAL_COOLDOWN_HOURS=24`
+
 ## 5) Verify backend
 
 After deploy:
 
 - Open `https://<apprunner-url>/meta/health`
 - Must return `{"ok": true, ...}`
+- Open `https://<apprunner-url>/api/admin/market/automation/status` with `X-Admin-Token` and verify scheduler + provider status
 
 ## 6) Connect Netlify frontend
 

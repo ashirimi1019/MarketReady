@@ -26,6 +26,7 @@ from app.services.ai import (
     _log_ai_audit,
     _safe_json,
     ai_is_configured,
+    ai_strict_mode_enabled,
     get_active_ai_model,
 )
 
@@ -52,6 +53,11 @@ KEYWORD_STOPWORDS = {
     "as",
     "is",
 }
+
+
+def _raise_if_ai_strict(reason: str) -> None:
+    if ai_strict_mode_enabled():
+        raise RuntimeError(reason)
 
 
 def _start_of_week(value: datetime) -> datetime:
@@ -336,14 +342,22 @@ def create_interview_session(
 
     questions_data: list[dict[str, Any]] = []
     summary: str | None = None
+    ai_failure_reason: str | None = None
+    if not ai_is_configured():
+        ai_failure_reason = "AI provider is not configured."
     if ai_is_configured():
         try:
             questions_data, summary = _ai_questions(
                 count, target_role, job_description, items, milestones, proofs
             )
-        except Exception:
+        except Exception as exc:
+            ai_failure_reason = str(exc)
             questions_data = []
     if not questions_data:
+        _raise_if_ai_strict(
+            "AI strict mode: interview session generation failed. "
+            f"Reason: {(ai_failure_reason or 'No questions returned by model.')[:220]}"
+        )
         questions_data, fallback_summary = _fallback_questions(count, items, milestones)
         summary = summary or fallback_summary
 
@@ -387,7 +401,7 @@ def create_interview_session(
         feature="interview_session_generate",
         prompt_input={"target_role": target_role, "question_count": count},
         context_ids=[str(q.id) for q in created_questions],
-        model=get_active_ai_model() if ai_is_configured() else "rules-based",
+        model=get_active_ai_model() if ai_is_configured() else "n/a",
         output=session.summary,
     )
     item_map = {str(item.id): item for item in items}
@@ -487,6 +501,9 @@ def submit_interview_response(
     confidence: float
     feedback: str
     if video and not answer:
+        _raise_if_ai_strict(
+            "AI strict mode: provide answer_text (transcript) so interview scoring can run through AI."
+        )
         score, confidence, feedback = (
             45.0,
             0.4,
@@ -512,9 +529,16 @@ def submit_interview_response(
             score = float(parsed.get("score", 0.0))
             confidence = float(parsed.get("confidence", 0.0))
             feedback = str(parsed.get("feedback") or "").strip() or "Feedback unavailable."
-        except Exception:
+        except Exception as exc:
+            _raise_if_ai_strict(
+                "AI strict mode: interview response scoring failed. "
+                f"Reason: {str(exc)[:220]}"
+            )
             score, confidence, feedback = _fallback_feedback(question.prompt, answer, bool(video))
     else:
+        _raise_if_ai_strict(
+            "AI strict mode: interview response scoring requires AI provider configuration."
+        )
         score, confidence, feedback = _fallback_feedback(question.prompt, answer, bool(video))
 
     now = datetime.utcnow()
@@ -576,7 +600,7 @@ def submit_interview_response(
         feature="interview_response_feedback",
         prompt_input={"session_id": str(session.id), "question_id": str(question.id)},
         context_ids=[str(question.id)],
-        model=get_active_ai_model() if ai_is_configured() else "rules-based",
+        model=get_active_ai_model() if ai_is_configured() else "n/a",
         output=feedback,
     )
     return _serialize_response(response)
@@ -621,7 +645,11 @@ def generate_resume_artifact(
     keywords = _extract_keywords(job_description, limit=20)
     markdown = ""
     structured: dict[str, Any] | None = None
-    model_used = "rules-based"
+    model_used = "n/a"
+    ai_failure_reason: str | None = None
+
+    if not ai_is_configured():
+        ai_failure_reason = "AI provider is not configured."
 
     if ai_is_configured():
         try:
@@ -663,10 +691,15 @@ def generate_resume_artifact(
                 if isinstance(parsed.get("structured"), dict):
                     structured = parsed["structured"]
                 model_used = get_active_ai_model()
-        except Exception:
+        except Exception as exc:
+            ai_failure_reason = str(exc)
             markdown = ""
 
     if not markdown:
+        _raise_if_ai_strict(
+            "AI strict mode: resume architect generation failed. "
+            f"Reason: {(ai_failure_reason or 'No markdown content returned by model.')[:220]}"
+        )
         skill_titles = [item.title for item in items[:8]]
         proof_lines = [
             f"- {proof.proof_type.replace('_', ' ').title()}: {proof.url}"
