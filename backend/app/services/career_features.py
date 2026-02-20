@@ -14,8 +14,10 @@ from app.models.entities import (
     AiResumeArtifact,
     ChecklistItem,
     ChecklistVersion,
+    MarketSignal,
     Milestone,
     Proof,
+    Skill,
     StudentGoal,
     StudentProfile,
     UserPathway,
@@ -58,6 +60,40 @@ KEYWORD_STOPWORDS = {
 def _raise_if_ai_strict(reason: str) -> None:
     if ai_strict_mode_enabled():
         raise RuntimeError(reason)
+
+
+def _market_snapshot_for_role(
+    db: Session,
+    *,
+    role_hint: str | None = None,
+    limit: int = 80,
+) -> dict[str, Any]:
+    query = db.query(MarketSignal, Skill).outerjoin(Skill, MarketSignal.skill_id == Skill.id)
+    hint = (role_hint or "").strip().lower()
+    if hint:
+        query = query.filter(MarketSignal.role_family.ilike(f"%{hint}%"))
+    rows = (
+        query.order_by(MarketSignal.window_end.desc().nullslast(), MarketSignal.id.desc())
+        .limit(max(10, min(limit, 200)))
+        .all()
+    )
+    if not rows:
+        return {"signal_count": 0, "top_skills": [], "top_roles": []}
+
+    skill_counts: dict[str, int] = {}
+    role_counts: dict[str, int] = {}
+    for signal, skill in rows:
+        skill_name = ((skill.name if skill else None) or "").strip().lower()
+        if skill_name:
+            skill_counts[skill_name] = skill_counts.get(skill_name, 0) + max(signal.source_count or 1, 1)
+        role_name = (signal.role_family or "").strip().lower()
+        if role_name:
+            role_counts[role_name] = role_counts.get(role_name, 0) + max(signal.source_count or 1, 1)
+    return {
+        "signal_count": len(rows),
+        "top_skills": [name for name, _ in sorted(skill_counts.items(), key=lambda row: row[1], reverse=True)[:8]],
+        "top_roles": [name for name, _ in sorted(role_counts.items(), key=lambda row: row[1], reverse=True)[:6]],
+    }
 
 
 def _start_of_week(value: datetime) -> datetime:
@@ -278,6 +314,7 @@ def _ai_questions(
     items: list[ChecklistItem],
     milestones: list[Milestone],
     proofs: list[Proof],
+    market_context: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], str | None]:
     system = (
         "Generate mock interview questions for a student using proof-backed milestones. "
@@ -287,6 +324,7 @@ def _ai_questions(
     payload = {
         "target_role": target_role,
         "job_description": job_description,
+        "market_context": market_context,
         "items": [{"id": str(i.id), "title": i.title, "tier": i.tier} for i in items],
         "milestones": [{"id": str(m.id), "title": m.title} for m in milestones],
         "proofs": [
@@ -339,6 +377,10 @@ def create_interview_session(
 ) -> dict[str, Any]:
     count = max(3, min(int(question_count), 10))
     items, milestones, proofs, _ = _resolve_user_context(db, user_id)
+    market_context = _market_snapshot_for_role(
+        db,
+        role_hint=target_role or job_description,
+    )
 
     questions_data: list[dict[str, Any]] = []
     summary: str | None = None
@@ -348,7 +390,13 @@ def create_interview_session(
     if ai_is_configured():
         try:
             questions_data, summary = _ai_questions(
-                count, target_role, job_description, items, milestones, proofs
+                count,
+                target_role,
+                job_description,
+                items,
+                milestones,
+                proofs,
+                market_context,
             )
         except Exception as exc:
             ai_failure_reason = str(exc)
@@ -642,6 +690,10 @@ def generate_resume_artifact(
 ) -> dict[str, Any]:
     items, _, proofs, profile = _resolve_user_context(db, user_id)
     resume_context = _extract_resume_context(profile)
+    market_context = _market_snapshot_for_role(
+        db,
+        role_hint=target_role or job_description,
+    )
     keywords = _extract_keywords(job_description, limit=20)
     markdown = ""
     structured: dict[str, Any] | None = None
@@ -667,6 +719,7 @@ def generate_resume_artifact(
                                 "university": profile.university if profile else None,
                             },
                             "resume_context": resume_context,
+                            "market_context": market_context,
                             "proofs": [
                                 {
                                     "id": str(proof.id),
