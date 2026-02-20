@@ -205,6 +205,7 @@ class TimelineOut(BaseModel):
 
 class AiGuideIn(BaseModel):
     question: Optional[str] = None
+    context_text: Optional[str] = None
 
 
 class AiGuideOut(BaseModel):

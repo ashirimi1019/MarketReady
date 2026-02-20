@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiSend } from "@/lib/api";
 import { useSession } from "@/lib/session";
+import { getErrorMessage, getRetryAfterSeconds, isRateLimited } from "@/lib/errors";
 
 type AuthResponse = {
   user_id: string;
@@ -60,9 +61,16 @@ export default function LoginPage() {
       setPassword("");
       router.push("/");
     } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : "Login failed. Check credentials."
-      );
+      if (isRateLimited(error)) {
+        const retry = getRetryAfterSeconds(error);
+        setStatus(
+          retry
+            ? `Too many attempts. Try again in about ${retry} seconds.`
+            : "Too many attempts. Please wait and try again."
+        );
+      } else {
+        setStatus(getErrorMessage(error) || "Login failed. Check credentials.");
+      }
     } finally {
       setLoading(false);
     }
@@ -84,7 +92,16 @@ export default function LoginPage() {
       });
       setStatus(response.message);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Reset request failed.");
+      if (isRateLimited(error)) {
+        const retry = getRetryAfterSeconds(error);
+        setStatus(
+          retry
+            ? `Too many requests. Try again in about ${retry} seconds.`
+            : "Too many requests. Please wait and try again."
+        );
+      } else {
+        setStatus(getErrorMessage(error) || "Reset request failed.");
+      }
     }
   };
 
@@ -111,7 +128,16 @@ export default function LoginPage() {
       setResetCode("");
       setNewPassword("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Password reset failed.");
+      if (isRateLimited(error)) {
+        const retry = getRetryAfterSeconds(error);
+        setStatus(
+          retry
+            ? `Too many requests. Try again in about ${retry} seconds.`
+            : "Too many requests. Please wait and try again."
+        );
+      } else {
+        setStatus(getErrorMessage(error) || "Password reset failed.");
+      }
     }
   };
 

@@ -55,6 +55,15 @@ def _request_context(request: Request) -> tuple[str | None, str | None]:
     return ip_address, user_agent
 
 
+def _login_throttle_prefix(username: str) -> str:
+    return f"{username}:"
+
+
+def _login_throttle_key(username: str, request: Request) -> str:
+    ip_address, _ = _request_context(request)
+    return f"{username}:{ip_address}"
+
+
 def _audit(
     db: Session,
     *,
@@ -276,8 +285,7 @@ def register(payload: AuthRegisterIn, request: Request, db: Session = Depends(ge
 @router.post("/login", response_model=AuthOut)
 def login(payload: AuthLoginIn, request: Request, db: Session = Depends(get_db)):
     username = _normalize_username(payload.username)
-    ip_address, _ = _request_context(request)
-    throttle_key = f"{username}:{ip_address}"
+    throttle_key = _login_throttle_key(username, request)
     auth_login_rate_limiter.check(throttle_key)
 
     account = db.query(StudentAccount).filter(StudentAccount.username == username).one_or_none()
@@ -429,6 +437,7 @@ def forgot_password(payload: AuthPasswordForgotIn, request: Request, db: Session
     dev_code = None
     message = "If the account exists, a reset code has been issued."
     if account:
+        auth_login_rate_limiter.clear_prefix(_login_throttle_prefix(account.username))
         account.password_reset_code = one_time_code()
         account.password_reset_expires_at = expiry_from_now(settings.auth_password_reset_ttl_seconds)
         db.commit()
@@ -506,6 +515,7 @@ def reset_password(payload: AuthPasswordResetIn, request: Request, db: Session =
     account.password_hash = digest
     account.password_reset_code = None
     account.password_reset_expires_at = None
+    auth_login_rate_limiter.clear_prefix(_login_throttle_prefix(username))
     db.query(AuthSession).filter(AuthSession.user_id == username).filter(
         AuthSession.revoked_at.is_(None)
     ).update({"revoked_at": datetime.utcnow()})

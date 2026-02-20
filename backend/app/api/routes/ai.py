@@ -44,7 +44,12 @@ def student_ai_guide(
 ):
     ai_rate_limiter.check(f"user:{user_id}")
     try:
-        return generate_student_guidance(db, user_id, payload.question)
+        return generate_student_guidance(
+            db,
+            user_id,
+            question=payload.question,
+            context_text=payload.context_text,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
+import { getErrorMessage, getRetryAfterSeconds, isRateLimited } from "@/lib/errors";
 import { useSession } from "@/lib/session";
 import type { ChecklistItem, AiGuide } from "@/types/api";
 
@@ -12,7 +13,6 @@ export default function StudentAiGuidePage() {
   const [guide, setGuide] = useState<AiGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [checklistMap, setChecklistMap] = useState<Record<string, ChecklistItem>>(
     {}
   );
@@ -39,7 +39,6 @@ export default function StudentAiGuidePage() {
     }
     setLoading(true);
     setError(null);
-    setNeedsOnboarding(false);
     try {
       const data = await apiSend<AiGuide>("/user/ai/guide", {
         method: "POST",
@@ -51,16 +50,16 @@ export default function StudentAiGuidePage() {
       });
       setGuide(data);
     } catch (err) {
-      const raw = err instanceof Error ? err.message : "Failed to load OpenAI guidance.";
-      if (raw.includes("No pathway selection found")) {
-        setNeedsOnboarding(true);
+      if (isRateLimited(err)) {
+        const retry = getRetryAfterSeconds(err);
         setError(
-          "Complete onboarding first: choose your major and pathway, then come back to the OpenAI Guide."
+          retry
+            ? `Rate limit reached. Try again in about ${retry} seconds.`
+            : "Rate limit reached. Please wait and try again."
         );
-        setGuide(null);
-        return;
+      } else {
+        setError(getErrorMessage(err) || "Failed to load OpenAI guidance.");
       }
-      setError(raw);
     } finally {
       setLoading(false);
     }
@@ -71,7 +70,6 @@ export default function StudentAiGuidePage() {
     setGuide(null);
     setError(null);
     setLoading(false);
-    setNeedsOnboarding(false);
   }, [isLoggedIn]);
 
   const citedItems = guide?.cited_checklist_item_ids
@@ -106,7 +104,7 @@ export default function StudentAiGuidePage() {
 
   return (
     <section className="panel">
-      <h2 className="text-3xl font-semibold">AI Guide · Powered by OpenAI</h2>
+      <h2 className="text-3xl font-semibold">AI Guide - Powered by OpenAI</h2>
       <p className="mt-2 text-[color:var(--muted)]">
         Powered by OpenAI. Grounded recommendations based on your checklist, milestones, profile, and market signals.
       </p>
@@ -148,14 +146,6 @@ export default function StudentAiGuidePage() {
         )}
         {error && (
           <p className="text-sm text-[color:var(--accent-2)]">{error}</p>
-        )}
-        {needsOnboarding && (
-          <div className="rounded-lg border border-[color:var(--border)] p-4 text-sm text-[color:var(--muted)]">
-            <a className="text-[color:var(--accent-2)] underline" href="/student/onboarding">
-              Go to onboarding
-            </a>{" "}
-            and save your pathway selection.
-          </div>
         )}
       </div>
 

@@ -4,8 +4,10 @@ import io
 from pathlib import Path
 import json
 import re
+import time
 import zipfile
 from typing import Any
+from collections import Counter
 
 import httpx
 from sqlalchemy import or_
@@ -63,6 +65,13 @@ MARKET_TOKEN_STOPWORDS = {
     "basics",
     "fundamentals",
 }
+GENERAL_PROOF_TYPES = [
+    "portfolio",
+    "project_doc",
+    "certificate",
+    "internship_letter",
+    "resume_upload",
+]
 
 
 def _truncate(text: str, limit: int = MAX_EVIDENCE_CHARS) -> str:
@@ -1036,6 +1045,68 @@ def _build_market_demand_context(
     }
 
 
+def _build_global_market_context(db: Session) -> dict[str, Any]:
+    rows = (
+        db.query(MarketSignal, Skill)
+        .outerjoin(Skill, MarketSignal.skill_id == Skill.id)
+        .order_by(MarketSignal.window_end.desc().nullslast(), MarketSignal.id.desc())
+        .limit(MARKET_SIGNAL_LOOKBACK_LIMIT)
+        .all()
+    )
+    if not rows:
+        return {
+            "signal_count": 0,
+            "latest_window_end": None,
+            "top_skills": [],
+            "top_roles": [],
+            "market_alignment": [],
+        }
+
+    skill_weights: dict[str, float] = {}
+    skill_labels: dict[str, str] = {}
+    role_counts: Counter[str] = Counter()
+    latest_window_end = None
+
+    for signal, skill in rows:
+        if signal.window_end and (latest_window_end is None or signal.window_end > latest_window_end):
+            latest_window_end = signal.window_end
+
+        role_family = (signal.role_family or "").strip()
+        if role_family:
+            role_counts[role_family] += 1
+
+        raw_skill = ((skill.name if skill else None) or "").strip()
+        if not raw_skill:
+            continue
+        skill_key = raw_skill.lower()
+        if skill_key in MARKET_TOKEN_STOPWORDS:
+            continue
+        weight = _market_signal_weight(signal)
+        skill_weights[skill_key] = skill_weights.get(skill_key, 0.0) + weight
+        if skill_key not in skill_labels:
+            skill_labels[skill_key] = _format_skill_label(raw_skill)
+
+    top_skill_rows = sorted(skill_weights.items(), key=lambda row: row[1], reverse=True)
+    top_skills = [skill_labels[key] for key, _ in top_skill_rows[:MARKET_GUIDE_SKILLS_LIMIT]]
+    top_roles = [name for name, _ in role_counts.most_common(4)]
+
+    alignment: list[str] = []
+    if top_skills:
+        alignment.append(f"Current demand is strongest for: {', '.join(top_skills[:3])}.")
+    if top_roles:
+        alignment.append(f"Common hiring clusters include: {', '.join(top_roles[:3])}.")
+    if not alignment:
+        alignment.append("Market signals are limited; guidance emphasizes transferable fundamentals.")
+
+    return {
+        "signal_count": len(rows),
+        "latest_window_end": latest_window_end.isoformat() if latest_window_end else None,
+        "top_skills": top_skills,
+        "top_roles": top_roles,
+        "market_alignment": alignment[:4],
+    }
+
+
 def ai_is_configured() -> bool:
     _, api_key, model, _ = _provider_config()
     return bool(settings.ai_enabled and api_key and model)
@@ -1049,7 +1120,13 @@ def get_active_ai_model() -> str:
     return _provider_config()[2]
 
 
-def _call_llm(system_prompt: str, user_payload: str, *, override_model: str | None = None) -> str:
+def _call_llm(
+    system_prompt: str,
+    user_payload: str,
+    *,
+    override_model: str | None = None,
+    expect_json: bool = True,
+) -> str:
     provider, api_key, default_model, api_base = _provider_config()
     model = (override_model or default_model or "").strip()
     if not settings.ai_enabled:
@@ -1071,15 +1148,38 @@ def _call_llm(system_prompt: str, user_payload: str, *, override_model: str | No
         ],
         "temperature": 0.2,
     }
+    if provider == "openai" and expect_json:
+        body["response_format"] = {"type": "json_object"}
+
+    last_error: Exception | None = None
     with httpx.Client(timeout=45.0) as client:
-        response = client.post(
-            f"{api_base}/chat/completions",
-            headers=headers,
-            json=body,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        for attempt in range(2):
+            try:
+                response = client.post(
+                    f"{api_base}/chat/completions",
+                    headers=headers,
+                    json=body,
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                status = exc.response.status_code
+                if status in {429, 500, 502, 503, 504} and attempt == 0:
+                    time.sleep(1.5)
+                    continue
+                raise RuntimeError(
+                    f"LLM API error ({status}): {exc.response.text[:500]}"
+                ) from exc
+            except Exception as exc:  # pragma: no cover - defensive
+                last_error = exc
+                if attempt == 0:
+                    time.sleep(1.0)
+                    continue
+                break
+
+    raise RuntimeError(f"LLM call failed: {last_error}") from last_error
 
 
 def _log_ai_audit(
@@ -1374,10 +1474,296 @@ def sync_evidence_requirement_matches(db: Session, user_id: str) -> dict[str, An
     }
 
 
-def generate_student_guidance(db: Session, user_id: str, question: str | None = None) -> dict:
+def _rules_general_career_guidance(
+    *,
+    question: str | None,
+    context_text: str | None,
+    profile: StudentProfile | None,
+    resume_detected: bool,
+    resume_context: dict[str, Any] | None,
+    market_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    academic_stage = _normalized_academic_stage(profile.semester) if profile else None
+    internship_actions = _internship_recommendations(academic_stage)
+    top_skills = list((market_context or {}).get("top_skills", []))[:MARKET_GUIDE_SKILLS_LIMIT]
+    market_alignment = list((market_context or {}).get("market_alignment", []))[:4]
+    question_text = (question or "").strip()
+    profile_target = (
+        (profile.masters_target or "").strip()
+        if profile and profile.masters_interest
+        else ""
+    )
+
+    recommendations: list[str] = []
+    if question_text:
+        recommendations.append(f"Directly prioritize: {question_text}")
+    provided_context = _truncate((context_text or "").strip(), limit=1200)
+    if provided_context:
+        recommendations.append("Use the provided auditor context as primary evidence for this guidance.")
+    recommendations += [
+        "Define a target role list (5-10 roles) and map required skills from current job postings.",
+        "Create one measurable project or portfolio artifact each week to prove capability.",
+        "Tailor your resume bullets to outcomes, tools, and impact for each target role.",
+    ]
+    recommendations = _yearize_list(_unique_list(internship_actions + recommendations))[:3]
+
+    next_actions = _yearize_list(
+        _unique_list(
+            internship_actions
+            + [
+                "Pick one target role and extract its top requirements from recent job posts.",
+                "Submit one evidence-backed update this week (project, certification, internship, or work sample).",
+                "Run a resume refinement pass for measurable impact and role-specific keywords.",
+            ]
+        )
+    )[:3]
+
+    weekly_plan = _yearize_list(
+        _unique_list(
+            internship_actions
+            + [
+                "Week 1: Clarify role targets and required competencies.",
+                "Week 2: Build or improve one proof artifact tied to a target competency.",
+                "Week 3: Update resume and portfolio evidence with quantified outcomes.",
+                "Week 4: Apply to role-aligned opportunities and gather feedback.",
+            ]
+        )
+    )[:6]
+
+    evidence_snippets = [
+        "General mode active because no pathway is selected yet.",
+        "Guidance uses profile, resume context, and market-demand signals when available.",
+    ]
+    if resume_detected and resume_context and resume_context.get("resume_excerpt"):
+        evidence_snippets.append("Resume text was analyzed for strengths and improvement opportunities.")
+    if top_skills:
+        evidence_snippets.append(f"Top market skills detected: {', '.join(top_skills[:3])}.")
+    if profile_target:
+        evidence_snippets.append(f"Profile indicates graduate-study intent toward: {profile_target}.")
+    if provided_context:
+        evidence_snippets.append(
+            f"Auditor provided context analyzed: {provided_context}"
+        )
+
+    resume_improvements, resume_strengths = _rules_resume_feedback(
+        resume_context=resume_context,
+        gap_items=[],
+    )
+    if not resume_detected:
+        resume_strengths = []
+        resume_improvements = []
+
+    recommended_certificates = _unique_list(_market_certificates_for_skills(top_skills))[:5]
+    materials_to_master = _unique_list(_market_materials_for_skills(top_skills))[:6]
+    if not materials_to_master:
+        materials_to_master = [
+            "Communication and storytelling for interviews and networking.",
+            "Domain-specific fundamentals for your target role.",
+            "Project scoping, execution, and outcome measurement.",
+        ]
+
+    return {
+        "explanation": (
+            "This guidance is generated in general career mode and is not limited to computer science. "
+            "It uses your question, profile, resume context, any auditor-provided context, and market demand signals."
+        ),
+        "decision": "Focus on role-targeted evidence and measurable outcomes this month.",
+        "recommendations": recommendations,
+        "recommended_certificates": recommended_certificates,
+        "materials_to_master": materials_to_master,
+        "market_top_skills": top_skills,
+        "market_alignment": market_alignment,
+        "priority_focus_areas": [
+            "Role targeting",
+            "Evidence-backed project outcomes",
+            "Resume-job alignment",
+            "Interview readiness",
+        ],
+        "weekly_plan": weekly_plan,
+        "evidence_snippets": evidence_snippets[:6],
+        "confidence_by_item": {},
+        "next_actions": next_actions,
+        "suggested_proof_types": GENERAL_PROOF_TYPES,
+        "cited_checklist_item_ids": [],
+        "resume_detected": resume_detected,
+        "resume_strengths": resume_strengths[:4],
+        "resume_improvements": resume_improvements[:5],
+        "uncertainty": "Using rules-based guidance because structured pathway data is not selected yet.",
+    }
+
+
+def _generate_general_career_guidance_with_llm(
+    *,
+    question: str | None,
+    context_text: str | None,
+    profile: StudentProfile | None,
+    resume_context: dict[str, Any] | None,
+    resume_detected: bool,
+    market_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    academic_stage = _normalized_academic_stage(profile.semester) if profile else None
+    internship_actions = _internship_recommendations(academic_stage)
+
+    system = (
+        "You are an OpenAI career strategist. Support ALL career domains "
+        "(technology, business, healthcare, legal, design, finance, education, public sector, trades, and creative fields). "
+        "Answer naturally like a professional career coach, but return output as a single JSON object. "
+        "Use user profile, resume context, and market context when available. "
+        "Do not assume the user is a CS major. "
+        "If auditor_context is provided, treat it as first-class evidence for this response. "
+        "If information is missing, make practical assumptions and provide adaptable recommendations. "
+        "Output keys: explanation (string), decision (string), recommendations (max 3), "
+        "recommended_certificates (max 5), materials_to_master (max 6), "
+        "market_top_skills (max 6), market_alignment (max 4), priority_focus_areas (max 4), "
+        "weekly_plan (max 6), evidence_snippets (max 6), confidence_by_item (object), "
+        "next_actions (max 3), suggested_proof_types (unique array), cited_checklist_item_ids (empty array), "
+        "resume_detected (boolean), resume_strengths (max 4), resume_improvements (max 5), uncertainty (string or null)."
+    )
+    payload = {
+        "question": question,
+        "auditor_context": _truncate((context_text or "").strip(), limit=3000) if context_text else None,
+        "mode": "general_career_guidance",
+        "student_profile": {
+            "academic_stage": academic_stage,
+            "state": profile.state if profile else None,
+            "university": profile.university if profile else None,
+            "masters_interest": profile.masters_interest if profile else None,
+            "masters_target": profile.masters_target if profile else None,
+            "masters_timeline": profile.masters_timeline if profile else None,
+            "masters_status": profile.masters_status if profile else None,
+        },
+        "resume_detected": resume_detected,
+        "resume_context": resume_context,
+        "market_context": market_context or {},
+    }
+
+    raw = _call_llm(system, json.dumps(payload))
+    parsed = _safe_json(raw)
+    if not parsed:
+        raise RuntimeError("AI output parse failure.")
+
+    response = {
+        "explanation": _yearize_text(str(parsed.get("explanation") or "")),
+        "decision": _yearize_text(str(parsed.get("decision") or "")),
+        "recommendations": _yearize_list(
+            _unique_list(internship_actions + list(parsed.get("recommendations") or []))
+        )[:3],
+        "recommended_certificates": list(parsed.get("recommended_certificates") or [])[:5],
+        "materials_to_master": list(parsed.get("materials_to_master") or [])[:6],
+        "market_top_skills": list(parsed.get("market_top_skills") or [])[:MARKET_GUIDE_SKILLS_LIMIT],
+        "market_alignment": list(parsed.get("market_alignment") or [])[:4],
+        "priority_focus_areas": list(parsed.get("priority_focus_areas") or [])[:4],
+        "weekly_plan": _yearize_list(list(parsed.get("weekly_plan") or []))[:6],
+        "evidence_snippets": _yearize_list(list(parsed.get("evidence_snippets") or []))[:6],
+        "confidence_by_item": parsed.get("confidence_by_item")
+        if isinstance(parsed.get("confidence_by_item"), dict)
+        else {},
+        "next_actions": _yearize_list(
+            _unique_list(internship_actions + list(parsed.get("next_actions") or []))
+        )[:3],
+        "suggested_proof_types": _unique_list(
+            list(parsed.get("suggested_proof_types") or []) + GENERAL_PROOF_TYPES
+        )[:6],
+        "cited_checklist_item_ids": [],
+        "resume_detected": bool(parsed.get("resume_detected", resume_detected)),
+        "resume_strengths": list(parsed.get("resume_strengths") or [])[:4],
+        "resume_improvements": list(parsed.get("resume_improvements") or [])[:5],
+        "uncertainty": parsed.get("uncertainty"),
+    }
+
+    if not response["explanation"]:
+        response["explanation"] = (
+            "Guidance generated in general career mode using your question, profile, and market context."
+        )
+    if not response["decision"]:
+        response["decision"] = "Prioritize evidence-backed progress toward your target role."
+    if not response["recommendations"]:
+        response["recommendations"] = _yearize_list(
+            internship_actions
+            + [
+                "Map your target role requirements from live postings.",
+                "Build one measurable proof artifact this week.",
+                "Refine your resume for role-specific outcomes and keywords.",
+            ]
+        )[:3]
+    if not response["next_actions"]:
+        response["next_actions"] = response["recommendations"][:3]
+    if not response["market_top_skills"]:
+        response["market_top_skills"] = list((market_context or {}).get("top_skills", []))[:MARKET_GUIDE_SKILLS_LIMIT]
+    if not response["market_alignment"]:
+        response["market_alignment"] = list((market_context or {}).get("market_alignment", []))[:4]
+
+    if not resume_detected:
+        response["resume_strengths"] = []
+        response["resume_improvements"] = []
+
+    return response
+
+
+def generate_student_guidance(
+    db: Session,
+    user_id: str,
+    question: str | None = None,
+    context_text: str | None = None,
+) -> dict:
     selection = db.query(UserPathway).filter(UserPathway.user_id == user_id).one_or_none()
+    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
+    resume_context = _extract_resume_context(profile)
+    resume_detected = bool(profile and getattr(profile, "resume_url", None))
+
     if not selection:
-        raise ValueError("No pathway selection found")
+        market_context = _build_global_market_context(db)
+        if ai_is_configured():
+            try:
+                response = _generate_general_career_guidance_with_llm(
+                    question=question,
+                    context_text=context_text,
+                    profile=profile,
+                    resume_context=resume_context,
+                    resume_detected=resume_detected,
+                    market_context=market_context,
+                )
+                _log_ai_audit(
+                    db,
+                    user_id=user_id,
+                    feature="student_guide_general",
+                    prompt_input={
+                        "question": question,
+                        "context_excerpt": _truncate((context_text or "").strip(), limit=500)
+                        if context_text
+                        else None,
+                    },
+                    context_ids=[],
+                    model=get_active_ai_model(),
+                    output=response.get("explanation"),
+                )
+                return response
+            except Exception:
+                pass
+
+        fallback = _rules_general_career_guidance(
+            question=question,
+            context_text=context_text,
+            profile=profile,
+            resume_detected=resume_detected,
+            resume_context=resume_context,
+            market_context=market_context,
+        )
+        _log_ai_audit(
+            db,
+            user_id=user_id,
+            feature="student_guide_general",
+            prompt_input={
+                "question": question,
+                "context_excerpt": _truncate((context_text or "").strip(), limit=500)
+                if context_text
+                else None,
+            },
+            context_ids=[],
+            model="rules-based",
+            output=fallback.get("explanation"),
+        )
+        return fallback
 
     version_id = selection.checklist_version_id
     if not version_id:
@@ -1400,9 +1786,7 @@ def generate_student_guidance(db: Session, user_id: str, question: str | None = 
         .all()
     )
     proofs = db.query(Proof).filter(Proof.user_id == user_id).all()
-    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
-    resume_context = _extract_resume_context(profile)
-    resume_detected = bool(profile and getattr(profile, "resume_url", None))
+    # profile/resume context already loaded above.
 
     readiness = calculate_readiness(items, proofs)
     top_gaps = readiness.get("top_gaps", [])
@@ -1475,6 +1859,11 @@ def generate_student_guidance(db: Session, user_id: str, question: str | None = 
                 "Academic stage suggests internship applications should be active now (Year 2/Year 3 window)."
             ]
         )[:6]
+    if context_text and context_text.strip():
+        rule_evidence_snippets = _unique_list(
+            rule_evidence_snippets
+            + [f"Auditor provided context analyzed: {_truncate(context_text.strip(), limit=800)}"]
+        )[:6]
     cited_ids = [str(i.id) for i in gap_items]
     suggested_proof_types = []
     for item in gap_items:
@@ -1486,6 +1875,7 @@ def generate_student_guidance(db: Session, user_id: str, question: str | None = 
         try:
             response = _generate_student_guidance_with_llm(
                 question=question,
+                context_text=context_text,
                 readiness=readiness,
                 gap_items=gap_items,
                 all_items=items,
@@ -1558,7 +1948,12 @@ def generate_student_guidance(db: Session, user_id: str, question: str | None = 
                 db,
                 user_id=user_id,
                 feature="student_guide",
-                prompt_input={"question": question},
+                prompt_input={
+                    "question": question,
+                    "context_excerpt": _truncate((context_text or "").strip(), limit=500)
+                    if context_text
+                    else None,
+                },
                 context_ids=cited_ids,
                 model=get_active_ai_model(),
                 output=response.get("explanation"),
@@ -1626,7 +2021,12 @@ def generate_student_guidance(db: Session, user_id: str, question: str | None = 
         db,
         user_id=user_id,
         feature="student_guide",
-        prompt_input={"question": question},
+        prompt_input={
+            "question": question,
+            "context_excerpt": _truncate((context_text or "").strip(), limit=500)
+            if context_text
+            else None,
+        },
         context_ids=cited_ids,
         model="rules-based",
         output=explanation,
@@ -1756,6 +2156,7 @@ def _unique_list(values: list[str]) -> list[str]:
 def _generate_student_guidance_with_llm(
     *,
     question: str | None,
+    context_text: str | None,
     readiness: dict,
     gap_items: list[ChecklistItem],
     all_items: list[ChecklistItem],
@@ -1767,9 +2168,11 @@ def _generate_student_guidance_with_llm(
 ) -> dict:
     academic_stage = _normalized_academic_stage(profile.semester) if profile else None
     system = (
-        "You are a career-pathway guide. Only use the provided checklist items. "
+        "You are a career-pathway guide across all career domains, not just software careers. "
+        "Only use the provided checklist items for requirement references. "
         "You may reference provided milestones for timing context. "
         "Use market_context to align advice to current demand signals. "
+        "If auditor_context is provided, treat it as first-class evidence for this response. "
         "If academic stage is Year 2 or Year 3 (including sophomore/junior), include internship application actions "
         "in recommendations and next_actions. "
         "If a resume excerpt is provided, personalize recommendations to the student's demonstrated experience. "
@@ -1803,6 +2206,7 @@ def _generate_student_guidance_with_llm(
     ]
     payload = {
         "question": question,
+        "auditor_context": _truncate((context_text or "").strip(), limit=3000) if context_text else None,
         "readiness": readiness,
         "resume_detected": resume_detected,
         "student_profile": {

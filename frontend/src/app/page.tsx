@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
+import { getErrorMessage, getRetryAfterSeconds, isRateLimited } from "@/lib/errors";
 import { useSession } from "@/lib/session";
 import { formatDisplayName } from "@/lib/name";
 
@@ -129,11 +130,23 @@ export default function Home() {
           ...headers,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ question: auditInput.trim() || null }),
+        body: JSON.stringify({
+          question: auditInput.trim() || null,
+          context_text: auditInput.trim() || null,
+        }),
       });
       setGuide(data);
     } catch (err) {
-      setGuideError(err instanceof Error ? err.message : "OpenAI audit unavailable.");
+      if (isRateLimited(err)) {
+        const retry = getRetryAfterSeconds(err);
+        setGuideError(
+          retry
+            ? `Rate limit reached. Try again in about ${retry} seconds.`
+            : "Rate limit reached. Please wait and try again."
+        );
+      } else {
+        setGuideError(getErrorMessage(err) || "OpenAI audit unavailable.");
+      }
     } finally {
       setGuideLoading(false);
     }

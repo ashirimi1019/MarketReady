@@ -17,7 +17,15 @@ class RateLimiter:
         entries = [ts for ts in entries if ts >= window_start]
 
         if len(entries) >= self.limit:
-            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+            oldest_in_window = min(entries) if entries else now
+            retry_after = int(max(1, (oldest_in_window + self.window - now).total_seconds()))
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": "Rate limit exceeded",
+                    "retry_after_seconds": retry_after,
+                },
+            )
 
         entries.append(now)
         self.hits[key] = entries
@@ -25,6 +33,11 @@ class RateLimiter:
     def clear(self, key: str) -> None:
         if key in self.hits:
             del self.hits[key]
+
+    def clear_prefix(self, prefix: str) -> None:
+        for key in list(self.hits.keys()):
+            if key.startswith(prefix):
+                del self.hits[key]
 
 from app.core.config import settings
 
