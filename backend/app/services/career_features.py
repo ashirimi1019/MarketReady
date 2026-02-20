@@ -135,31 +135,30 @@ def _resolve_user_context(
     user_id: str,
 ) -> tuple[list[ChecklistItem], list[Milestone], list[Proof], StudentProfile | None]:
     selection = db.query(UserPathway).filter(UserPathway.user_id == user_id).one_or_none()
-    if not selection:
-        raise ValueError("No pathway selection found")
-
     version: ChecklistVersion | None = None
-    if selection.checklist_version_id:
-        version = db.query(ChecklistVersion).get(selection.checklist_version_id)
-    if not version:
-        version = (
-            db.query(ChecklistVersion)
-            .filter(ChecklistVersion.pathway_id == selection.pathway_id)
-            .filter(ChecklistVersion.status == "published")
-            .order_by(ChecklistVersion.version_number.desc())
-            .first()
-        )
-
     items: list[ChecklistItem] = []
-    if version:
-        items = db.query(ChecklistItem).filter(ChecklistItem.version_id == version.id).all()
+    milestones: list[Milestone] = []
+    if selection:
+        if selection.checklist_version_id:
+            version = db.query(ChecklistVersion).get(selection.checklist_version_id)
+        if not version:
+            version = (
+                db.query(ChecklistVersion)
+                .filter(ChecklistVersion.pathway_id == selection.pathway_id)
+                .filter(ChecklistVersion.status == "published")
+                .order_by(ChecklistVersion.version_number.desc())
+                .first()
+            )
 
-    milestones = (
-        db.query(Milestone)
-        .filter(Milestone.pathway_id == selection.pathway_id)
-        .order_by(Milestone.semester_index.asc())
-        .all()
-    )
+        if version:
+            items = db.query(ChecklistItem).filter(ChecklistItem.version_id == version.id).all()
+
+        milestones = (
+            db.query(Milestone)
+            .filter(Milestone.pathway_id == selection.pathway_id)
+            .order_by(Milestone.semester_index.asc())
+            .all()
+        )
     proofs = (
         db.query(Proof)
         .filter(Proof.user_id == user_id)
