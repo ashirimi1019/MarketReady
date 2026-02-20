@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.1-8b-instant"
     groq_api_base: str = "https://api.groq.com/openai/v1"
     openai_api_key: str | None = None
-    openai_model: str = "gpt-4.1-nano"
+    openai_model: str = "gpt-5-mini"
     openai_api_base: str = "https://api.openai.com/v1"
     openai_finetune_base_model: str = "gpt-4.1-nano-2025-04-14"
     local_upload_dir: str = "uploads"
