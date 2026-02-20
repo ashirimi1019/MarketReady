@@ -785,6 +785,173 @@ def _internship_recommendations(stage: str | None) -> list[str]:
     ]
 
 
+def _infer_role_target_hint(
+    question: str | None,
+    context_text: str | None,
+    resume_context: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    combined = " ".join(
+        part
+        for part in [
+            question or "",
+            context_text or "",
+            str((resume_context or {}).get("resume_excerpt") or ""),
+        ]
+        if part
+    ).lower()
+    if not combined.strip():
+        return None
+
+    role_tracks = [
+        {
+            "track": "Frontend / Web UI",
+            "roles": "Frontend Developer, Web Developer, UI Engineer",
+            "focus": "Frontend engineering",
+            "keywords": [
+                "html",
+                "css",
+                "javascript",
+                "js",
+                "react",
+                "next.js",
+                "frontend",
+                "front-end",
+                "tailwind",
+                "ui",
+                "ux",
+            ],
+            "recommendation": "Target Frontend Developer / Web Developer roles and showcase responsive UI projects.",
+            "next_action": "Ship one polished frontend project (responsive + accessibility + performance) and add a live demo.",
+        },
+        {
+            "track": "Backend / API",
+            "roles": "Backend Developer, API Engineer, Platform Engineer",
+            "focus": "Backend engineering",
+            "keywords": [
+                "api",
+                "backend",
+                "fastapi",
+                "django",
+                "flask",
+                "node",
+                "express",
+                "postgres",
+                "database",
+                "microservice",
+            ],
+            "recommendation": "Target backend/API roles and highlight service design, data modeling, and reliability.",
+            "next_action": "Publish one API project with auth, database integration, tests, and deployment docs.",
+        },
+        {
+            "track": "Data / Analytics",
+            "roles": "Data Analyst, BI Analyst, Analytics Engineer",
+            "focus": "Data analysis",
+            "keywords": [
+                "sql",
+                "tableau",
+                "power bi",
+                "analytics",
+                "pandas",
+                "excel",
+                "dashboard",
+                "etl",
+                "data pipeline",
+            ],
+            "recommendation": "Target data/analytics roles and emphasize measurable insights and dashboard outcomes.",
+            "next_action": "Create a portfolio case study with cleaned data, analysis, dashboard, and business recommendations.",
+        },
+        {
+            "track": "Cybersecurity",
+            "roles": "Security Analyst, SOC Analyst, Security Engineer",
+            "focus": "Security operations",
+            "keywords": [
+                "security",
+                "cyber",
+                "soc",
+                "siem",
+                "pentest",
+                "vulnerability",
+                "incident response",
+                "threat",
+                "iam",
+            ],
+            "recommendation": "Target security roles and show threat detection, hardening, and incident-response evidence.",
+            "next_action": "Document one security project with risk findings, mitigations, and verification evidence.",
+        },
+    ]
+
+    scored: list[tuple[int, dict[str, Any], list[str]]] = []
+    for track in role_tracks:
+        matched_terms = [term for term in track["keywords"] if term in combined]
+        if matched_terms:
+            scored.append((len(matched_terms), track, matched_terms))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    _, best_track, matched_terms = scored[0]
+    return {
+        "track": best_track["track"],
+        "roles": best_track["roles"],
+        "focus": best_track["focus"],
+        "recommendation": best_track["recommendation"],
+        "next_action": best_track["next_action"],
+        "matched_terms": ", ".join(matched_terms[:4]),
+    }
+
+
+def _apply_role_target_hint(
+    response: dict[str, Any],
+    *,
+    question: str | None,
+    context_text: str | None,
+    resume_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    hint = _infer_role_target_hint(question, context_text, resume_context)
+    if not hint:
+        return response
+
+    role_decision = (
+        f"Your evidence aligns with {hint['track']} roles "
+        f"({hint['roles']}). Prioritize that role lane now."
+    )
+    existing_decision = str(response.get("decision") or "").strip()
+    response["decision"] = (
+        f"{role_decision} {existing_decision}".strip()
+        if existing_decision
+        else role_decision
+    )
+    response["decision"] = _yearize_text(response["decision"])
+
+    recommendations = _unique_list(
+        [hint["recommendation"]] + list(response.get("recommendations") or [])
+    )[:3]
+    response["recommendations"] = _yearize_list(recommendations)
+
+    next_actions = _unique_list(
+        [hint["next_action"]] + list(response.get("next_actions") or [])
+    )[:3]
+    response["next_actions"] = _yearize_list(next_actions)
+
+    priority_focus_areas = _unique_list(
+        [hint["focus"]] + list(response.get("priority_focus_areas") or [])
+    )[:4]
+    response["priority_focus_areas"] = priority_focus_areas
+
+    market_alignment = _unique_list(
+        [f"Suggested role lane from your evidence: {hint['roles']}."] + list(response.get("market_alignment") or [])
+    )[:4]
+    response["market_alignment"] = market_alignment
+
+    evidence_snippets = _unique_list(
+        [f"Role-target signal detected in provided context: {hint['matched_terms']}."] + list(response.get("evidence_snippets") or [])
+    )[:6]
+    response["evidence_snippets"] = _yearize_list(evidence_snippets)
+
+    return response
+
+
 def _weekly_plan_for_gaps(
     gap_items: list[ChecklistItem],
     milestones: list[Milestone],
@@ -1146,8 +1313,10 @@ def _call_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_payload},
         ],
-        "temperature": 0.2,
     }
+    # GPT-5-family chat models currently reject non-default temperature values.
+    if not (provider == "openai" and model.startswith("gpt-5")):
+        body["temperature"] = 0.2
     if provider == "openai" and expect_json:
         body["response_format"] = {"type": "json_object"}
 
@@ -1166,11 +1335,22 @@ def _call_llm(
             except httpx.HTTPStatusError as exc:
                 last_error = exc
                 status = exc.response.status_code
+                body_text = exc.response.text[:1000]
+                if (
+                    provider == "openai"
+                    and status == 400
+                    and "response_format" in body
+                    and "response_format" in body_text.lower()
+                    and attempt == 0
+                ):
+                    body.pop("response_format", None)
+                    time.sleep(1.0)
+                    continue
                 if status in {429, 500, 502, 503, 504} and attempt == 0:
                     time.sleep(1.5)
                     continue
                 raise RuntimeError(
-                    f"LLM API error ({status}): {exc.response.text[:500]}"
+                    f"LLM API error ({status}): {body_text}"
                 ) from exc
             except Exception as exc:  # pragma: no cover - defensive
                 last_error = exc
@@ -1713,6 +1893,7 @@ def generate_student_guidance(
 
     if not selection:
         market_context = _build_global_market_context(db)
+        ai_error_message: str | None = None
         if ai_is_configured():
             try:
                 response = _generate_general_career_guidance_with_llm(
@@ -1722,6 +1903,12 @@ def generate_student_guidance(
                     resume_context=resume_context,
                     resume_detected=resume_detected,
                     market_context=market_context,
+                )
+                response = _apply_role_target_hint(
+                    response,
+                    question=question,
+                    context_text=context_text,
+                    resume_context=resume_context,
                 )
                 _log_ai_audit(
                     db,
@@ -1738,8 +1925,8 @@ def generate_student_guidance(
                     output=response.get("explanation"),
                 )
                 return response
-            except Exception:
-                pass
+            except Exception as exc:
+                ai_error_message = str(exc)
 
         fallback = _rules_general_career_guidance(
             question=question,
@@ -1749,6 +1936,17 @@ def generate_student_guidance(
             resume_context=resume_context,
             market_context=market_context,
         )
+        fallback = _apply_role_target_hint(
+            fallback,
+            question=question,
+            context_text=context_text,
+            resume_context=resume_context,
+        )
+        if ai_error_message:
+            fallback["uncertainty"] = (
+                "AI unavailable. Using rules-based guidance. "
+                f"Reason: {_truncate(ai_error_message, limit=180)}"
+            )
         _log_ai_audit(
             db,
             user_id=user_id,
@@ -1871,6 +2069,7 @@ def generate_student_guidance(
             if proof_type not in suggested_proof_types:
                 suggested_proof_types.append(proof_type)
 
+    ai_error_message: str | None = None
     if ai_is_configured():
         try:
             response = _generate_student_guidance_with_llm(
@@ -1935,19 +2134,25 @@ def generate_student_guidance(
                 response["next_actions"] = _unique_list(
                     internship_actions + list(response.get("next_actions") or [])
                 )[:3]
-            response["recommendations"] = _yearize_list(
-                _unique_list(list(response.get("recommendations") or []))
-            )[:3]
-            response["next_actions"] = _yearize_list(
-                _unique_list(list(response.get("next_actions") or []))
-            )[:3]
-            if not resume_detected:
-                response["resume_strengths"] = []
-                response["resume_improvements"] = []
-            _log_ai_audit(
-                db,
-                user_id=user_id,
-                feature="student_guide",
+                response["recommendations"] = _yearize_list(
+                    _unique_list(list(response.get("recommendations") or []))
+                )[:3]
+                response["next_actions"] = _yearize_list(
+                    _unique_list(list(response.get("next_actions") or []))
+                )[:3]
+                if not resume_detected:
+                    response["resume_strengths"] = []
+                    response["resume_improvements"] = []
+                response = _apply_role_target_hint(
+                    response,
+                    question=question,
+                    context_text=context_text,
+                    resume_context=resume_context,
+                )
+                _log_ai_audit(
+                    db,
+                    user_id=user_id,
+                    feature="student_guide",
                 prompt_input={
                     "question": question,
                     "context_excerpt": _truncate((context_text or "").strip(), limit=500)
@@ -1955,13 +2160,13 @@ def generate_student_guidance(
                     else None,
                 },
                 context_ids=cited_ids,
-                model=get_active_ai_model(),
-                output=response.get("explanation"),
-            )
-            return response
-        except Exception:
+                    model=get_active_ai_model(),
+                    output=response.get("explanation"),
+                )
+                return response
+        except Exception as exc:
             # Continue to rules fallback below.
-            pass
+            ai_error_message = str(exc)
 
     if top_gaps:
         explanation = (
@@ -2016,6 +2221,17 @@ def generate_student_guidance(
         "resume_improvements": rule_resume_improvements if resume_detected else [],
         "uncertainty": "AI unavailable. Using rules-based guidance.",
     }
+    response = _apply_role_target_hint(
+        response,
+        question=question,
+        context_text=context_text,
+        resume_context=resume_context,
+    )
+    if ai_error_message:
+        response["uncertainty"] = (
+            "AI unavailable. Using rules-based guidance. "
+            f"Reason: {_truncate(ai_error_message, limit=180)}"
+        )
 
     _log_ai_audit(
         db,
