@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import re
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -90,15 +91,19 @@ def fetch_adzuna_jobs(
 ) -> list[dict[str, Any]]:
     if not settings.adzuna_app_id or not settings.adzuna_app_key:
         raise RuntimeError("Adzuna credentials are not configured")
-    encoded_query = query.strip() or "software engineer"
-    url = (
-        f"https://api.adzuna.com/v1/api/jobs/{settings.adzuna_country}/search/1"
-        f"?app_id={settings.adzuna_app_id}&app_key={settings.adzuna_app_key}"
-        f"&results_per_page={max(1, min(limit, 50))}&what={encoded_query}"
-    )
+    query_text = query.strip() or "software engineer"
+    url = f"https://api.adzuna.com/v1/api/jobs/{settings.adzuna_country}/search/1"
     try:
         with httpx.Client(timeout=20.0) as client:
-            response = client.get(url)
+            response = client.get(
+                url,
+                params={
+                    "app_id": settings.adzuna_app_id,
+                    "app_key": settings.adzuna_app_key,
+                    "results_per_page": max(1, min(limit, 50)),
+                    "what": query_text,
+                },
+            )
             response.raise_for_status()
             data = response.json()
     except httpx.HTTPError as exc:
@@ -190,9 +195,10 @@ def fetch_careeronestop_signals(
 ) -> list[dict[str, Any]]:
     if not settings.careeronestop_api_key or not settings.careeronestop_user_id:
         raise RuntimeError("CareerOneStop credentials are not configured")
+    query_segment = quote(query or "software developer", safe="")
     url = (
         f"https://api.careeronestop.org/v1/occupation/{settings.careeronestop_user_id}/"
-        f"{query or 'software developer'}/US/0/10"
+        f"{query_segment}/US/0/10"
     )
     headers = {"Authorization": f"Bearer {settings.careeronestop_api_key}"}
     try:
