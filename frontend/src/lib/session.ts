@@ -6,8 +6,17 @@ export function useSession() {
   const [storedUsername, setStoredUsername] = useLocalStorage("mp_username", "");
   const [authToken, setAuthToken] = useLocalStorage("mp_auth_token", "");
   const [refreshToken, setRefreshToken] = useLocalStorage("mp_refresh_token", "");
-  const username = storedUsername;
-  const isLoggedIn = Boolean(storedUsername && authToken);
+  const fallbackUsername =
+    typeof window !== "undefined"
+      ? (window.localStorage.getItem("mp_username") ?? "")
+      : "";
+  const fallbackAuthToken =
+    typeof window !== "undefined"
+      ? (window.localStorage.getItem("mp_auth_token") ?? "")
+      : "";
+
+  const username = storedUsername || fallbackUsername;
+  const isLoggedIn = Boolean((storedUsername || fallbackUsername) && (authToken || fallbackAuthToken));
 
   const login = (nextUsername: string, token: string, nextRefreshToken: string) => {
     setStoredUsername(nextUsername);

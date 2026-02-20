@@ -229,6 +229,91 @@ class AiGuideOut(BaseModel):
     uncertainty: Optional[str] = None
 
 
+class AiIfIWereYouIn(BaseModel):
+    gpa: Optional[float] = Field(default=None, ge=0, le=4)
+    internship_history: Optional[str] = None
+    industry: Optional[str] = None
+    location: Optional[str] = None
+
+
+class AiIfIWereYouOut(BaseModel):
+    summary: str
+    fastest_path: List[str] = Field(default_factory=list)
+    realistic_next_moves: List[str] = Field(default_factory=list)
+    avoid_now: List[str] = Field(default_factory=list)
+    recommended_certificates: List[str] = Field(default_factory=list)
+    uncertainty: Optional[str] = None
+
+
+class AiCertRoiIn(BaseModel):
+    target_role: Optional[str] = None
+    current_skills: Optional[str] = None
+    location: Optional[str] = None
+    max_budget_usd: Optional[int] = Field(default=None, ge=0)
+
+
+class AiCertRoiOptionOut(BaseModel):
+    certificate: str
+    cost_usd: str
+    time_required: str
+    entry_salary_range: str
+    difficulty_level: str
+    demand_trend: str
+    roi_score: int = Field(ge=1, le=100)
+    why_it_helps: str
+
+
+class AiCertRoiOut(BaseModel):
+    target_role: Optional[str] = None
+    top_options: List[AiCertRoiOptionOut] = Field(default_factory=list)
+    winner: Optional[str] = None
+    recommendation: str
+    uncertainty: Optional[str] = None
+
+
+class AiEmotionalResetIn(BaseModel):
+    story_context: Optional[str] = None
+
+
+class AiEmotionalResetOut(BaseModel):
+    title: str
+    story: str
+    reframe: str
+    action_plan: List[str] = Field(default_factory=list)
+    uncertainty: Optional[str] = None
+
+
+class AiRebuildPlanIn(BaseModel):
+    current_skills: str
+    target_job: str
+    location: Optional[str] = None
+    hours_per_week: Optional[int] = Field(default=8, ge=1, le=80)
+
+
+class AiRebuildPlanOut(BaseModel):
+    summary: str
+    day_0_30: List[str] = Field(default_factory=list)
+    day_31_60: List[str] = Field(default_factory=list)
+    day_61_90: List[str] = Field(default_factory=list)
+    weekly_targets: List[str] = Field(default_factory=list)
+    portfolio_targets: List[str] = Field(default_factory=list)
+    recommended_certificates: List[str] = Field(default_factory=list)
+    uncertainty: Optional[str] = None
+
+
+class AiCollegeGapIn(BaseModel):
+    target_job: Optional[str] = None
+    current_skills: Optional[str] = None
+
+
+class AiCollegeGapOut(BaseModel):
+    job_description_playbook: List[str] = Field(default_factory=list)
+    reverse_engineer_skills: List[str] = Field(default_factory=list)
+    project_that_recruiters_care: List[str] = Field(default_factory=list)
+    networking_strategy: List[str] = Field(default_factory=list)
+    uncertainty: Optional[str] = None
+
+
 class AiEvidenceMapOut(BaseModel):
     matched_count: int
     mode: str

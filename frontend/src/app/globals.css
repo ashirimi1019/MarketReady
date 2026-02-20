@@ -569,7 +569,7 @@ textarea:focus {
 }
 
 .market-ticker-item::before {
-  content: "⚡";
+  content: "+";
   margin-right: 8px;
 }
 

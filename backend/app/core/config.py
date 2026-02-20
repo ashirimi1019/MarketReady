@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     admin_token: str | None = None
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     ai_enabled: bool = False
-    llm_provider: str = "groq"
+    llm_provider: str = "openai"
     groq_api_key: str | None = None
     groq_model: str = "llama-3.1-8b-instant"
     groq_api_base: str = "https://api.groq.com/openai/v1"
@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5-mini"
     openai_api_base: str = "https://api.openai.com/v1"
     openai_finetune_base_model: str = "gpt-4.1-nano-2025-04-14"
+    llm_timeout_seconds: int = 90
+    llm_max_retries: int = 3
     local_upload_dir: str = "uploads"
     ai_proof_verify_threshold: float = 0.8
     auth_secret: str = "change-me-auth-secret"

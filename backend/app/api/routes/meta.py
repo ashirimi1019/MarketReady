@@ -1,9 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
+from app.api.deps import require_admin
 from app.core.config import settings
 from app.core.database import engine
-from app.services.ai import ai_is_configured, get_active_ai_model, get_active_ai_provider
+from app.services.ai import (
+    ai_is_configured,
+    ai_runtime_diagnostics,
+    get_active_ai_model,
+    get_active_ai_provider,
+)
 from app.services.storage import s3_is_enabled, storage_self_test
 
 router = APIRouter(prefix="/meta")
@@ -16,6 +22,11 @@ def ai_meta():
         "model": get_active_ai_model(),
         "provider": get_active_ai_provider(),
     }
+
+
+@router.get("/ai/test", dependencies=[Depends(require_admin)])
+def ai_meta_test():
+    return ai_runtime_diagnostics()
 
 
 @router.get("/storage")

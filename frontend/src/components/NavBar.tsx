@@ -48,9 +48,9 @@ export default function NavBar() {
           <span className="nav-tagline">Proof-first career acceleration</span>
         </div>
         <nav className="nav-links nav-links-main">
-          <Link href="/#audit-engine">Audit</Link>
-          <Link href="/#signals">Signals</Link>
-          <Link href="/student/onboarding">Portal</Link>
+          <Link href="/#audit-engine">Career Check</Link>
+          <Link href="/#signals">Proof Vault</Link>
+          <Link href="/student/onboarding">My Plan</Link>
         </nav>
         <div className="nav-auth-meta nav-auth-meta-guest">
           <Link className="nav-pill nav-pill-muted" href="/login">
@@ -74,13 +74,13 @@ export default function NavBar() {
         <span className="nav-tagline">Signed in as {displayName}</span>
       </div>
       <nav className="nav-links nav-links-main">
-        <Link href="/student/checklist">Audit</Link>
-        <Link href="/student/readiness">Signals</Link>
-        <Link href="/student/onboarding">Portal</Link>
-        <Link href="/student/proofs">Vault</Link>
-        <Link href="/student/interview">Interview</Link>
-        <Link href="/student/resume-architect">Resume OpenAI</Link>
-        <Link href="/student/guide">Guide</Link>
+        <Link href="/student/checklist">My Tasks</Link>
+        <Link href="/student/readiness">My Score</Link>
+        <Link href="/student/onboarding">My Plan</Link>
+        <Link href="/student/proofs">Proof Vault</Link>
+        <Link href="/student/interview">Interview AI</Link>
+        <Link href="/student/resume-architect">Resume AI</Link>
+        <Link href="/student/guide">Career AI</Link>
       </nav>
       <div className="nav-auth-meta">
         <ThemeToggle />

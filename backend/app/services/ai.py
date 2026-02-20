@@ -85,6 +85,24 @@ def _clean_text(raw: str, limit: int = MAX_EVIDENCE_CHARS) -> str:
     return _truncate(cleaned, limit=limit)
 
 
+def _coerce_optional_text(value: Any, *, limit: int = 600) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+    elif isinstance(value, (int, float, bool)):
+        text = str(value)
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False)
+        except Exception:
+            text = str(value)
+    text = text.strip()
+    if not text:
+        return None
+    return _truncate(text, limit=limit)
+
+
 def _extract_text_from_bytes(blob: bytes, *, limit: int = MAX_EVIDENCE_CHARS) -> str | None:
     if not blob:
         return None
@@ -1323,6 +1341,40 @@ def get_active_ai_model() -> str:
     return _provider_config()[2]
 
 
+def ai_runtime_diagnostics() -> dict[str, Any]:
+    provider = get_active_ai_provider()
+    model = get_active_ai_model()
+    configured = ai_is_configured()
+    result: dict[str, Any] = {
+        "configured": configured,
+        "provider": provider,
+        "model": model,
+        "ok": False,
+        "response_parsed": False,
+        "error": None,
+    }
+    if not configured:
+        result["error"] = "AI is not fully configured"
+        return result
+
+    started = time.time()
+    try:
+        raw = _call_llm(
+            "Return JSON only: {\"ok\":true,\"message\":\"pong\"}.",
+            json.dumps({"ping": "healthcheck"}),
+        )
+        parsed = _safe_json(raw)
+        result["response_parsed"] = bool(parsed)
+        result["ok"] = bool(parsed and parsed.get("ok") is True)
+        if not result["ok"]:
+            result["error"] = "AI responded but payload did not match expected JSON."
+    except Exception as exc:
+        result["error"] = str(exc)
+    finally:
+        result["latency_ms"] = int((time.time() - started) * 1000)
+    return result
+
+
 def _call_llm(
     system_prompt: str,
     user_payload: str,
@@ -1356,9 +1408,12 @@ def _call_llm(
     if provider == "openai" and expect_json:
         body["response_format"] = {"type": "json_object"}
 
+    max_retries = max(1, int(settings.llm_max_retries))
+    timeout_seconds = max(15, int(settings.llm_timeout_seconds))
+
     last_error: Exception | None = None
-    with httpx.Client(timeout=45.0) as client:
-        for attempt in range(2):
+    with httpx.Client(timeout=float(timeout_seconds)) as client:
+        for attempt in range(max_retries):
             try:
                 response = client.post(
                     f"{api_base}/chat/completions",
@@ -1377,21 +1432,21 @@ def _call_llm(
                     and status == 400
                     and "response_format" in body
                     and "response_format" in body_text.lower()
-                    and attempt == 0
+                    and attempt < (max_retries - 1)
                 ):
                     body.pop("response_format", None)
                     time.sleep(1.0)
                     continue
-                if status in {429, 500, 502, 503, 504} and attempt == 0:
-                    time.sleep(1.5)
+                if status in {408, 409, 429, 500, 502, 503, 504} and attempt < (max_retries - 1):
+                    time.sleep(1.5 * (attempt + 1))
                     continue
                 raise RuntimeError(
                     f"LLM API error ({status}): {body_text}"
                 ) from exc
             except Exception as exc:  # pragma: no cover - defensive
                 last_error = exc
-                if attempt == 0:
-                    time.sleep(1.0)
+                if attempt < (max_retries - 1):
+                    time.sleep(1.0 * (attempt + 1))
                     continue
                 break
 
@@ -1884,7 +1939,7 @@ def _generate_general_career_guidance_with_llm(
         "resume_detected": bool(parsed.get("resume_detected", resume_detected)),
         "resume_strengths": list(parsed.get("resume_strengths") or [])[:4],
         "resume_improvements": list(parsed.get("resume_improvements") or [])[:5],
-        "uncertainty": parsed.get("uncertainty"),
+        "uncertainty": _coerce_optional_text(parsed.get("uncertainty")),
     }
 
     if not response["explanation"]:
@@ -2170,25 +2225,25 @@ def generate_student_guidance(
                 response["next_actions"] = _unique_list(
                     internship_actions + list(response.get("next_actions") or [])
                 )[:3]
-                response["recommendations"] = _yearize_list(
-                    _unique_list(list(response.get("recommendations") or []))
-                )[:3]
-                response["next_actions"] = _yearize_list(
-                    _unique_list(list(response.get("next_actions") or []))
-                )[:3]
-                if not resume_detected:
-                    response["resume_strengths"] = []
-                    response["resume_improvements"] = []
-                response = _apply_role_target_hint(
-                    response,
-                    question=question,
-                    context_text=context_text,
-                    resume_context=resume_context,
-                )
-                _log_ai_audit(
-                    db,
-                    user_id=user_id,
-                    feature="student_guide",
+            response["recommendations"] = _yearize_list(
+                _unique_list(list(response.get("recommendations") or []))
+            )[:3]
+            response["next_actions"] = _yearize_list(
+                _unique_list(list(response.get("next_actions") or []))
+            )[:3]
+            if not resume_detected:
+                response["resume_strengths"] = []
+                response["resume_improvements"] = []
+            response = _apply_role_target_hint(
+                response,
+                question=question,
+                context_text=context_text,
+                resume_context=resume_context,
+            )
+            _log_ai_audit(
+                db,
+                user_id=user_id,
+                feature="student_guide",
                 prompt_input={
                     "question": question,
                     "context_excerpt": _truncate((context_text or "").strip(), limit=500)
@@ -2196,10 +2251,10 @@ def generate_student_guidance(
                     else None,
                 },
                 context_ids=cited_ids,
-                    model=get_active_ai_model(),
-                    output=response.get("explanation"),
-                )
-                return response
+                model=get_active_ai_model(),
+                output=response.get("explanation"),
+            )
+            return response
         except Exception as exc:
             # Continue to rules fallback below.
             ai_error_message = str(exc)
@@ -2314,7 +2369,7 @@ def generate_market_proposal_from_signals(
             return {
                 "summary": summary,
                 "diff": diff,
-                "uncertainty": response.get("uncertainty"),
+                "uncertainty": _coerce_optional_text(response.get("uncertainty")),
             }
         except Exception:
             pass
@@ -2573,7 +2628,7 @@ def _generate_student_guidance_with_llm(
         "resume_detected": bool(parsed.get("resume_detected", resume_detected)),
         "resume_strengths": list(parsed.get("resume_strengths", []))[:4],
         "resume_improvements": list(parsed.get("resume_improvements", []))[:5],
-        "uncertainty": parsed.get("uncertainty"),
+        "uncertainty": _coerce_optional_text(parsed.get("uncertainty")),
     }
 
 
@@ -2620,7 +2675,7 @@ def _generate_market_proposal_with_llm(
         "diff": parsed.get("diff")
         if isinstance(parsed.get("diff"), dict)
         else {"signals": signals, "suggested_changes": []},
-        "uncertainty": parsed.get("uncertainty"),
+        "uncertainty": _coerce_optional_text(parsed.get("uncertainty")),
     }
 
 
