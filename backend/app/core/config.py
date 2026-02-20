@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     admin_token: str | None = None
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     ai_enabled: bool = False
-    ai_strict_mode: bool = False
+    ai_strict_mode: bool = True
     llm_provider: str = "openai"
     groq_api_key: str | None = None
     groq_model: str = "llama-3.1-8b-instant"
