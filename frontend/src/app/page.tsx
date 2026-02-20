@@ -11,6 +11,7 @@ type AiGuide = {
   decision?: string | null;
   recommendations?: string[];
   next_actions?: string[];
+  recommended_certificates?: string[];
   uncertainty?: string | null;
 };
 
@@ -338,6 +339,14 @@ export default function Home() {
                   : guide.recommendations?.length
                     ? guide.recommendations.map((item) => <li key={item}>{item}</li>)
                     : [<li key="none">No actions returned.</li>]}
+              </ul>
+            </div>
+            <div className="auditor-result-card">
+              <p className="auditor-result-label">Recommended Certificates</p>
+              <ul className="auditor-result-list">
+                {guide.recommended_certificates?.length
+                  ? guide.recommended_certificates.map((item) => <li key={item}>{item}</li>)
+                  : [<li key="none-certs">No certificate recommendations returned.</li>]}
               </ul>
             </div>
           </div>

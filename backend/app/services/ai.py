@@ -939,6 +939,34 @@ def _apply_role_target_hint(
     )[:4]
     response["priority_focus_areas"] = priority_focus_areas
 
+    cert_hints_by_track: dict[str, list[str]] = {
+        "Frontend / Web UI": [
+            "freeCodeCamp - Responsive Web Design",
+            "freeCodeCamp - JavaScript Algorithms and Data Structures",
+            "Meta Front-End Developer Professional Certificate",
+        ],
+        "Backend / API": [
+            "AWS Certified Developer - Associate",
+            "Postman API Fundamentals Student Expert",
+            "GitHub Foundations",
+        ],
+        "Data / Analytics": [
+            "Google Data Analytics Professional Certificate",
+            "Microsoft Power BI Data Analyst (PL-300)",
+            "Databricks Data Engineer Associate",
+        ],
+        "Cybersecurity": [
+            "CompTIA Security+",
+            "SC-900 Microsoft Security, Compliance, and Identity Fundamentals",
+            "ISC2 Certified in Cybersecurity (CC)",
+        ],
+    }
+    existing_certs = [str(item) for item in (response.get("recommended_certificates") or []) if str(item).strip()]
+    hint_certs = cert_hints_by_track.get(hint["track"], [])
+    merged_certs = _unique_list(hint_certs + existing_certs)
+    if merged_certs:
+        response["recommended_certificates"] = merged_certs[:5]
+
     market_alignment = _unique_list(
         [f"Suggested role lane from your evidence: {hint['roles']}."] + list(response.get("market_alignment") or [])
     )[:4]
@@ -1057,6 +1085,14 @@ def _market_certificates_for_skills(skills: list[str]) -> list[str]:
     text = " ".join(skills).lower()
     certs: list[str] = []
 
+    if any(token in text for token in ["html", "css", "frontend", "front-end", "web", "javascript", "react"]):
+        certs.extend(
+            [
+                "freeCodeCamp - Responsive Web Design",
+                "freeCodeCamp - JavaScript Algorithms and Data Structures",
+                "Meta Front-End Developer Professional Certificate",
+            ]
+        )
     if any(token in text for token in ["aws", "cloud", "docker", "kubernetes", "devops"]):
         certs.extend(
             [
