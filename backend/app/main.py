@@ -38,13 +38,18 @@ async def add_request_id(request: Request, call_next):
     return response
 
 
-app.include_router(auth.router, tags=["auth"])
-app.include_router(majors.router, tags=["majors"])
-app.include_router(user.router, tags=["user"])
-app.include_router(proofs.router, tags=["proofs"])
-app.include_router(readiness.router, tags=["readiness"])
-app.include_router(timeline.router, tags=["timeline"])
-app.include_router(admin.router, tags=["admin"])
-app.include_router(ai.router, tags=["ai"])
-app.include_router(market.router, tags=["market"])
-app.include_router(meta.router, tags=["meta"])
+def _register_routes(prefix: str = "") -> None:
+    app.include_router(auth.router, tags=["auth"], prefix=prefix)
+    app.include_router(majors.router, tags=["majors"], prefix=prefix)
+    app.include_router(user.router, tags=["user"], prefix=prefix)
+    app.include_router(proofs.router, tags=["proofs"], prefix=prefix)
+    app.include_router(readiness.router, tags=["readiness"], prefix=prefix)
+    app.include_router(timeline.router, tags=["timeline"], prefix=prefix)
+    app.include_router(admin.router, tags=["admin"], prefix=prefix)
+    app.include_router(ai.router, tags=["ai"], prefix=prefix)
+    app.include_router(market.router, tags=["market"], prefix=prefix)
+    app.include_router(meta.router, tags=["meta"], prefix=prefix)
+
+
+_register_routes("")
+_register_routes("/api")

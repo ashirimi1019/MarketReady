@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import { useSession } from "@/lib/session";
 import type { AiResumeArtifact } from "@/types/api";
 
@@ -57,7 +58,14 @@ export default function StudentResumeArchitectPage() {
       setMessage("Resume draft generated from your proof vault.");
       loadArtifacts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not generate resume.");
+      const message = getErrorMessage(err);
+      if (message.includes("Not Found")) {
+        setError(
+          "Resume endpoint was not found on the backend. Redeploy backend to latest and verify NEXT_PUBLIC_API_BASE."
+        );
+      } else {
+        setError(message || "Could not generate resume.");
+      }
     } finally {
       setLoading(false);
     }

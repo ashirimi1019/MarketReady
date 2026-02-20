@@ -3,7 +3,15 @@ import { ApiError } from "./errors";
 export { ApiError } from "./errors";
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+  (process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+
+function getCandidateApiBases(): string[] {
+  const bases = [API_BASE];
+  if (API_BASE.endsWith("/api")) {
+    bases.push(API_BASE.slice(0, -4));
+  }
+  return [...new Set(bases.filter(Boolean))];
+}
 
 type RefreshResponse = {
   user_id: string;
@@ -56,18 +64,29 @@ async function tryRefreshSession(): Promise<boolean> {
 }
 
 export async function apiGet<T>(path: string, headers?: HeadersInit): Promise<T> {
-  let res = await fetch(`${API_BASE}${path}`, {
-    cache: "no-store",
-    headers: withAuthHeaders(headers),
-  });
-  if (res.status === 401) {
-    const refreshed = await tryRefreshSession();
-    if (refreshed) {
-      res = await fetch(`${API_BASE}${path}`, {
-        cache: "no-store",
-        headers: withAuthHeaders(headers),
-      });
+  const bases = getCandidateApiBases();
+  let res: Response | null = null;
+  for (const base of bases) {
+    res = await fetch(`${base}${path}`, {
+      cache: "no-store",
+      headers: withAuthHeaders(headers),
+    });
+    if (res.status === 404 && base.endsWith("/api") && bases.length > 1) {
+      continue;
     }
+    if (res.status === 401) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        res = await fetch(`${base}${path}`, {
+          cache: "no-store",
+          headers: withAuthHeaders(headers),
+        });
+      }
+    }
+    break;
+  }
+  if (!res) {
+    throw new ApiError(500, "API request failed: no base URL available");
   }
   if (!res.ok) {
     const body = await res.text();
@@ -80,18 +99,29 @@ export async function apiSend<T>(
   path: string,
   options: RequestInit
 ): Promise<T> {
-  let res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: withAuthHeaders(options.headers),
-  });
-  if (res.status === 401) {
-    const refreshed = await tryRefreshSession();
-    if (refreshed) {
-      res = await fetch(`${API_BASE}${path}`, {
-        ...options,
-        headers: withAuthHeaders(options.headers),
-      });
+  const bases = getCandidateApiBases();
+  let res: Response | null = null;
+  for (const base of bases) {
+    res = await fetch(`${base}${path}`, {
+      ...options,
+      headers: withAuthHeaders(options.headers),
+    });
+    if (res.status === 404 && base.endsWith("/api") && bases.length > 1) {
+      continue;
     }
+    if (res.status === 401) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        res = await fetch(`${base}${path}`, {
+          ...options,
+          headers: withAuthHeaders(options.headers),
+        });
+      }
+    }
+    break;
+  }
+  if (!res) {
+    throw new ApiError(500, "API request failed: no base URL available");
   }
   if (!res.ok) {
     const body = await res.text();
