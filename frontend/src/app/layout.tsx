@@ -36,7 +36,7 @@ export default function RootLayout({
       >
         <div className="page-shell">
           <NavBar />
-          {children}
+          <div className="mt-0">{children}</div>
         </div>
       </body>
     </html>
