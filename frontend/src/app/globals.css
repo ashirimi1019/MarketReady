@@ -266,7 +266,20 @@ a { color: inherit; text-decoration: none; }
 
 /* Nav shell aliases used in NavBar.tsx */
 .nav-shell { /* handled by .nav */ }
-.nav-shell-auth { border-color: var(--border-hi); }
+.nav-shell-auth {
+  border-color: var(--border-hi);
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.nav-shell-auth .nav-links-main {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: auto;
+  justify-content: flex-start;
+  scrollbar-width: none;
+}
+.nav-shell-auth .nav-brand-stack { flex-shrink: 0; }
+.nav-shell-auth .nav-auth-meta { flex-shrink: 0; }
 
 /* ─── PANELS / CARDS ─────────────────────────────────────────── */
 .panel {
