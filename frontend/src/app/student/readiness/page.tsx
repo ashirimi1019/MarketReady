@@ -167,6 +167,33 @@ export default function StudentReadinessPage() {
                 <SegmentBar label="Evidence Density" value={mri?.components.evidence_density ?? 0} weight={mri?.weights.evidence_density ?? 0.3} color="#ff7b1a" />
               </div>
             </div>
+
+            {/* Proficiency breakdown */}
+            {mri && (
+              <div className="mt-4 pt-4 border-t border-[color:var(--border)]">
+                <div className="flex flex-wrap gap-4 items-center">
+                  <p className="text-xs text-[color:var(--muted)] font-semibold">Proficiency Mix</p>
+                  {[
+                    { label: "Beginner (50%)", value: mri.proficiency_breakdown?.beginner ?? 0, color: "#ffb300" },
+                    { label: "Intermediate (75%)", value: mri.proficiency_breakdown?.intermediate ?? 0, color: "#3d6dff" },
+                    { label: "Professional (100%)", value: mri.proficiency_breakdown?.professional ?? 0, color: "#00c896" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                      <span className="text-xs" style={{ color }}>{value} {label}</span>
+                    </div>
+                  ))}
+                  {(mri.ai_verified_certs ?? 0) > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(0,200,150,0.1)", color: "#00c896" }}>
+                      {mri.ai_verified_certs} AI-verified cert{(mri.ai_verified_certs ?? 0) > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                <a href="/student/checklist" className="mt-2 inline-block text-xs text-[color:var(--primary)] hover:opacity-80">
+                  Boost score by upgrading to Professional proficiency →
+                </a>
+              </div>
+            )}
           </div>
 
           {/* What's Dragging Your Score */}
