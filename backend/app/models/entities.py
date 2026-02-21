@@ -203,6 +203,7 @@ class Proof(Base):
     url = Column(Text, nullable=False)
     status = Column(String(32), default="submitted", nullable=False)
     review_note = Column(Text, nullable=True)
+    proficiency_level = Column(String(32), nullable=True, default="intermediate")  # beginner, intermediate, professional
     metadata_json = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

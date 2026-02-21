@@ -149,6 +149,7 @@ class ProofIn(BaseModel):
     checklist_item_id: UUID
     proof_type: str
     url: str
+    proficiency_level: Optional[str] = "intermediate"  # beginner, intermediate, professional
     metadata: Optional[dict[str, Any]] = None
 
 
@@ -160,6 +161,7 @@ class ProofOut(BaseModel):
     view_url: Optional[str] = None
     status: str
     review_note: Optional[str] = None
+    proficiency_level: Optional[str] = "intermediate"
     metadata: Optional[dict[str, Any]] = None
     created_at: datetime
 
