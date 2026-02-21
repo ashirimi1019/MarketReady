@@ -138,6 +138,7 @@ export default function LoginPage() {
             <input
               className={inputClass}
               style={inputStyle}
+              type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleLogin()}
