@@ -12,6 +12,7 @@ type StudentProfile = {
   masters_target?: string | null;
   masters_timeline?: string | null;
   masters_status?: string | null;
+  github_username?: string | null;
   resume_url?: string | null;
   resume_view_url?: string | null;
   resume_filename?: string | null;
@@ -35,6 +36,7 @@ export default function StudentProfilePage() {
   const [semester, setSemester] = useState("");
   const [state, setState] = useState("");
   const [university, setUniversity] = useState("");
+  const [githubUsername, setGithubUsername] = useState("");
   const [mastersInterest, setMastersInterest] = useState(false);
   const [mastersTarget, setMastersTarget] = useState("");
   const [mastersTimeline, setMastersTimeline] = useState("");
@@ -45,6 +47,7 @@ export default function StudentProfilePage() {
   const [resumeUploadedAt, setResumeUploadedAt] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [uploadingResume, setUploadingResume] = useState(false);
+  const [deletingResume, setDeletingResume] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -55,6 +58,7 @@ export default function StudentProfilePage() {
         setSemester(data.semester ?? "");
         setState(data.state ?? "");
         setUniversity(data.university ?? "");
+        setGithubUsername(data.github_username ?? "");
         setMastersInterest(Boolean(data.masters_interest));
         setMastersTarget(data.masters_target ?? "");
         setMastersTimeline(data.masters_timeline ?? "");
@@ -91,6 +95,7 @@ export default function StudentProfilePage() {
           masters_target: mastersTarget || null,
           masters_timeline: mastersTimeline || null,
           masters_status: mastersStatus || null,
+          github_username: githubUsername || null,
         }),
       });
       setMessage("Profile saved.");
@@ -155,6 +160,44 @@ export default function StudentProfilePage() {
     }
   };
 
+  const removeResume = async () => {
+    if (!isLoggedIn) {
+      setMessage("Please log in to manage your resume.");
+      return;
+    }
+    if (!resumeUrl) {
+      setMessage("No resume is currently saved.");
+      return;
+    }
+
+    setMessage(null);
+    setDeletingResume(true);
+    try {
+      const response = await fetch(`${API_BASE}/user/profile/resume`, {
+        method: "DELETE",
+        headers: getAuthHeaders(headers),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Resume removal failed: ${text}`);
+      }
+
+      const data = (await response.json()) as StudentProfile;
+      setResumeUrl(data.resume_url ?? null);
+      setResumeViewUrl(data.resume_view_url ?? null);
+      setResumeFilename(data.resume_filename ?? null);
+      setResumeUploadedAt(data.resume_uploaded_at ?? null);
+      setResumeFile(null);
+      setMessage("Resume removed. AI guidance will now use profile + entered context.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Failed to remove resume."
+      );
+    } finally {
+      setDeletingResume(false);
+    }
+  };
+
   return (
     <section className="panel">
       <h2 className="text-3xl font-semibold">My Profile</h2>
@@ -197,6 +240,16 @@ export default function StudentProfilePage() {
                 placeholder="e.g., George Mason University"
                 value={university}
                 onChange={(event) => setUniversity(event.target.value)}
+                disabled={!isLoggedIn || saving}
+              />
+            </label>
+            <label className="text-sm text-[color:var(--muted)]">
+              GitHub Username
+              <input
+                className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
+                placeholder="e.g., octocat"
+                value={githubUsername}
+                onChange={(event) => setGithubUsername(event.target.value)}
                 disabled={!isLoggedIn || saving}
               />
             </label>
@@ -253,18 +306,21 @@ export default function StudentProfilePage() {
         </div>
 
         <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-lg font-semibold">Resume for AI Personalization · Powered by OpenAI</h3>
+          <h3 className="text-lg font-semibold">Resume for AI Personalization - Powered by OpenAI</h3>
           <p className="mt-2 text-sm text-[color:var(--muted)]">
-            Upload your resume so OpenAI can personalize decisions and recommendations.
+            Upload your resume so OpenAI can tailor recommendations to your actual experience.
           </p>
+          <ul className="mt-3 list-disc pl-5 text-sm text-[color:var(--muted)]">
+            <li>Career AI: role targeting and next-step recommendations.</li>
+            <li>Interview AI: more relevant prompts and feedback.</li>
+            <li>Resume AI: stronger keyword and impact alignment.</li>
+          </ul>
           <div className="mt-4 grid gap-3">
             {resumeUrl && (
               <div className="rounded-lg border border-dashed border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]">
                 <div>Current resume: {resumeFilename ?? "Uploaded resume"}</div>
                 {resumeUploadedAt && (
-                  <div>
-                    Uploaded at: {new Date(resumeUploadedAt).toLocaleString()}
-                  </div>
+                  <div>Uploaded at: {new Date(resumeUploadedAt).toLocaleString()}</div>
                 )}
                 <a
                   className="text-[color:var(--accent-2)] underline"
@@ -293,16 +349,25 @@ export default function StudentProfilePage() {
                 title="Upload resume file"
                 aria-label="Upload resume file"
                 onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)}
-                disabled={!isLoggedIn || uploadingResume || saving}
+                disabled={!isLoggedIn || uploadingResume || deletingResume || saving}
               />
             </label>
             <button
               className="cta cta-secondary"
               onClick={uploadResume}
-              disabled={!isLoggedIn || uploadingResume || saving}
+              disabled={!isLoggedIn || uploadingResume || deletingResume || saving}
             >
-              {uploadingResume ? "Uploading resume..." : "Upload Resume"}
+              {uploadingResume ? "Uploading resume..." : resumeUrl ? "Replace Resume" : "Upload Resume"}
             </button>
+            {resumeUrl && (
+              <button
+                className="cta cta-secondary"
+                onClick={removeResume}
+                disabled={!isLoggedIn || uploadingResume || deletingResume || saving}
+              >
+                {deletingResume ? "Removing resume..." : "Remove Resume"}
+              </button>
+            )}
           </div>
         </div>
       </div>

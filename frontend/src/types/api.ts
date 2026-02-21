@@ -106,6 +106,7 @@ export type StudentProfile = {
   masters_target?: string | null;
   masters_timeline?: string | null;
   masters_status?: string | null;
+  github_username?: string | null;
   resume_url?: string | null;
   resume_view_url?: string | null;
   resume_filename?: string | null;
@@ -118,6 +119,9 @@ export type StudentProfile = {
 
 export type Readiness = {
   score: number;
+  checklist_score?: number;
+  engineering_score?: number;
+  market_alignment_score?: number;
   band: string;
   capped?: boolean;
   cap_reason?: string | null;

@@ -101,6 +101,7 @@ class StudentProfileIn(BaseModel):
     masters_target: Optional[str] = None
     masters_timeline: Optional[str] = None
     masters_status: Optional[str] = None
+    github_username: Optional[str] = None
 
 
 class StudentProfileOut(BaseModel):
@@ -113,6 +114,7 @@ class StudentProfileOut(BaseModel):
     masters_target: Optional[str] = None
     masters_timeline: Optional[str] = None
     masters_status: Optional[str] = None
+    github_username: Optional[str] = None
     resume_url: Optional[str] = None
     resume_view_url: Optional[str] = None
     resume_filename: Optional[str] = None
@@ -163,6 +165,9 @@ class ProofOut(BaseModel):
 
 class ReadinessOut(BaseModel):
     score: float
+    checklist_score: Optional[float] = None
+    engineering_score: Optional[float] = None
+    market_alignment_score: Optional[float] = None
     band: str
     capped: bool
     cap_reason: Optional[str] = None

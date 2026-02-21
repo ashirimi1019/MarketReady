@@ -5,9 +5,9 @@ from urllib.parse import quote
 from collections import defaultdict
 from app.api.deps import get_db, get_current_user_id
 from app.schemas.api import ReadinessOut, ReadinessRankOut, WeeklyMilestoneStreakOut
-from app.models.entities import ChecklistItem, Proof, UserPathway, ChecklistVersion, Milestone
+from app.models.entities import ChecklistItem, Proof, UserPathway, ChecklistVersion, Milestone, StudentProfile
 from app.core.config import settings
-from app.services.readiness import calculate_readiness
+from app.services.readiness import calculate_unified_readiness
 from app.services.career_features import build_weekly_streak
 
 router = APIRouter(prefix="/user")
@@ -29,14 +29,29 @@ def _resolve_version_id(selection: UserPathway, db: Session):
     return version.id
 
 
-def _load_readiness(selection: UserPathway, db: Session) -> dict:
+def _load_readiness(
+    selection: UserPathway,
+    db: Session,
+    *,
+    profile: StudentProfile | None = None,
+    engineering_cache: dict[str, dict] | None = None,
+    market_alignment_cache: dict[str, dict] | None = None,
+) -> dict:
     version_id = _resolve_version_id(selection, db)
     if not version_id:
         raise HTTPException(status_code=404, detail="No published checklist version")
 
     items = db.query(ChecklistItem).filter(ChecklistItem.version_id == version_id).all()
     proofs = db.query(Proof).filter(Proof.user_id == selection.user_id).all()
-    score = calculate_readiness(items, proofs)
+    score = calculate_unified_readiness(
+        db,
+        selection,
+        items,
+        proofs,
+        profile=profile,
+        engineering_cache=engineering_cache,
+        market_alignment_cache=market_alignment_cache,
+    )
 
     milestone = (
         db.query(Milestone)
@@ -59,7 +74,8 @@ def readiness(
     selection = db.query(UserPathway).filter(UserPathway.user_id == user_id).one_or_none()
     if not selection:
         raise HTTPException(status_code=404, detail="No pathway selection found")
-    return _load_readiness(selection, db)
+    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
+    return _load_readiness(selection, db, profile=profile)
 
 
 @router.get("/readiness/rank", response_model=ReadinessRankOut)
@@ -71,9 +87,24 @@ def readiness_rank(
     if not selection:
         raise HTTPException(status_code=404, detail="No pathway selection found")
 
-    current_score = _load_readiness(selection, db)
-
     selections = db.query(UserPathway).all()
+    user_ids = [row.user_id for row in selections]
+    profiles_by_user = {
+        row.user_id: row
+        for row in db.query(StudentProfile)
+        .filter(StudentProfile.user_id.in_(user_ids))
+        .all()
+    } if user_ids else {}
+    engineering_cache: dict[str, dict] = {}
+    market_alignment_cache: dict[str, dict] = {}
+
+    current_score = _load_readiness(
+        selection,
+        db,
+        profile=profiles_by_user.get(user_id),
+        engineering_cache=engineering_cache,
+        market_alignment_cache=market_alignment_cache,
+    )
     proofs_by_user: dict[str, list[Proof]] = defaultdict(list)
     all_proofs = db.query(Proof).all()
     for proof in all_proofs:
@@ -107,9 +138,14 @@ def readiness_rank(
                 .filter(ChecklistItem.version_id == version_id)
                 .all()
             )
-        score_row = calculate_readiness(
+        score_row = calculate_unified_readiness(
+            db,
+            row,
             version_items_cache[version_key],
             proofs_by_user.get(row.user_id, []),
+            profile=profiles_by_user.get(row.user_id),
+            engineering_cache=engineering_cache,
+            market_alignment_cache=market_alignment_cache,
         )
         scores.append((row.user_id, float(score_row["score"])))
 

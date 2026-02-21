@@ -74,6 +74,7 @@ export default function NavBar() {
         <span className="nav-tagline">Signed in as {displayName}</span>
       </div>
       <nav className="nav-links nav-links-main">
+        <Link href="/student/profile">My Profile</Link>
         <Link href="/student/checklist">My Tasks</Link>
         <Link href="/student/readiness">My Score</Link>
         <Link href="/student/onboarding">My Plan</Link>

@@ -167,6 +167,20 @@ def read_s3_object_bytes(file_url: str, max_bytes: int = 250_000) -> bytes | Non
         return None
 
 
+def delete_s3_object(file_url: str) -> bool:
+    if not s3_is_enabled():
+        return False
+    key = _extract_s3_key_from_url(file_url)
+    if not key:
+        return False
+    client = _create_s3_client()
+    try:
+        client.delete_object(Bucket=settings.s3_bucket, Key=key)
+        return True
+    except (BotoCoreError, ClientError):
+        return False
+
+
 def storage_self_test() -> dict:
     base = {
         "s3_enabled": s3_is_enabled(),

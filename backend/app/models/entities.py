@@ -140,6 +140,7 @@ class StudentProfile(Base):
     masters_target = Column(String(160), nullable=True)
     masters_timeline = Column(String(120), nullable=True)
     masters_status = Column(String(80), nullable=True)
+    github_username = Column(String(255), nullable=True)
     resume_url = Column(Text, nullable=True)
     resume_filename = Column(String(255), nullable=True)
     resume_uploaded_at = Column(DateTime, nullable=True)

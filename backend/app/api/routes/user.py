@@ -22,7 +22,13 @@ from app.models.entities import (
     UserPathway,
 )
 from app.services.ai import RESUME_MATCH_PROOF_TYPE, sync_resume_requirement_matches
-from app.services.storage import resolve_file_view_url, s3_is_enabled, upload_bytes_to_s3
+from app.services.storage import (
+    delete_s3_object,
+    is_s3_object_url,
+    resolve_file_view_url,
+    s3_is_enabled,
+    upload_bytes_to_s3,
+)
 from app.schemas.api import (
     ChecklistItemOut,
     SelectPathwayIn,
@@ -42,6 +48,33 @@ ALLOWED_RESUME_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf"}
 MAX_RESUME_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 
+def _normalize_github_username(value: str | None) -> str | None:
+    if value is None:
+        return None
+    username = value.strip()
+    if username.startswith("@"):
+        username = username[1:]
+    return username or None
+
+
+def _cleanup_resume_file(file_url: str | None) -> None:
+    if not file_url:
+        return
+
+    if is_s3_object_url(file_url):
+        if not delete_s3_object(file_url):
+            logger.warning("Could not delete S3 resume object for url=%s", file_url)
+        return
+
+    if file_url.startswith("/uploads/"):
+        resume_path = Path(settings.local_upload_dir) / file_url.removeprefix("/uploads/")
+        try:
+            if resume_path.exists():
+                resume_path.unlink()
+        except OSError:
+            logger.warning("Could not delete local resume file at %s", resume_path)
+
+
 def _serialize_profile(profile: StudentProfile) -> dict:
     return {
         "id": profile.id,
@@ -53,6 +86,7 @@ def _serialize_profile(profile: StudentProfile) -> dict:
         "masters_target": profile.masters_target,
         "masters_timeline": profile.masters_timeline,
         "masters_status": profile.masters_status,
+        "github_username": profile.github_username,
         "resume_url": profile.resume_url,
         "resume_view_url": (
             resolve_file_view_url(profile.resume_url) if profile.resume_url else None
@@ -253,6 +287,7 @@ def upsert_profile(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    github_username = _normalize_github_username(payload.github_username)
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
     if profile:
         profile.semester = payload.semester
@@ -263,6 +298,7 @@ def upsert_profile(
         profile.masters_target = payload.masters_target
         profile.masters_timeline = payload.masters_timeline
         profile.masters_status = payload.masters_status
+        profile.github_username = github_username
         profile.updated_at = datetime.utcnow()
     else:
         profile = StudentProfile(
@@ -274,6 +310,7 @@ def upsert_profile(
             masters_target=payload.masters_target,
             masters_timeline=payload.masters_timeline,
             masters_status=payload.masters_status,
+            github_username=github_username,
         )
         db.add(profile)
     db.commit()
@@ -330,6 +367,7 @@ def upload_resume(
     now = datetime.utcnow()
 
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
+    old_resume_url = profile.resume_url if profile else None
     if profile:
         profile.resume_url = resume_url
         profile.resume_filename = original_name
@@ -347,6 +385,36 @@ def upload_resume(
 
     db.commit()
     db.refresh(profile)
+    if old_resume_url and old_resume_url != resume_url:
+        _cleanup_resume_file(old_resume_url)
+
+    try:
+        sync_resume_requirement_matches(db, user_id)
+    except Exception:
+        logger.exception("sync_resume_requirement_matches failed for user %s", user_id)
+    db.refresh(profile)
+    return _serialize_profile(profile)
+
+
+@router.delete("/profile/resume", response_model=StudentProfileOut)
+def delete_resume(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
+    if not profile or not profile.resume_url:
+        raise HTTPException(status_code=404, detail="No resume found")
+
+    old_resume_url = profile.resume_url
+    profile.resume_url = None
+    profile.resume_filename = None
+    profile.resume_uploaded_at = None
+    profile.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(profile)
+
+    _cleanup_resume_file(old_resume_url)
     try:
         sync_resume_requirement_matches(db, user_id)
     except Exception:
