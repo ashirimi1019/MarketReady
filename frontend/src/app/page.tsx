@@ -474,6 +474,27 @@ export default function Home() {
       ? `Top ${Math.max(1, Math.round(100 - readinessRank.percentile + 1))}%`
       : readinessToRank(readinessScore)
     : "Top 4%";
+  const React = { useState, useEffect };
+  const [score, setScore] = React.useState(82);
+
+  React.useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const delay = setTimeout(() => {
+      let current = 82;
+      interval = setInterval(() => {
+        current -= 1;
+        setScore(current);
+        if (current <= 63) {
+          if (interval) clearInterval(interval);
+        }
+      }, 30);
+    }, 1200);
+
+    return () => {
+      clearTimeout(delay);
+      if (interval) clearInterval(interval);
+    };
+  }, []);
 
   return (
     <main className="landing-stack">
@@ -487,69 +508,46 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="panel hero-stage">
-        <span className="hero-signal-pill">OpenAI Career Engine</span>
-        <h1 className="hero-headline">
-          Not sure what to do
-          <br />
-          <span className="hero-emphasis">after school?</span>
+      <section className="panel bg-zinc-950 text-white text-center py-24 px-6">
+        <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight leading-tight">
+          Are You Actually Hireable — Or Just Hopeful?
         </h1>
-        <p className="hero-copy">
-          {isLoggedIn
-            ? `${displayName}, get clear next steps from your current profile, proofs, and hiring signals.`
-            : "Market Ready is for students and recent grads who want a real plan to land a job by graduation, not vague advice."}
+        <p className="text-xl text-zinc-300 max-w-3xl mx-auto mt-6">
+          We combine live GitHub engineering signals with real hiring demand data — then
+          stress-test your career against the next AI market shift.
         </p>
-        <div className="mt-8 grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-left">
-          <article className="auditor-result-card">
-            <p className="auditor-result-label">Who it is for</p>
-            <p className="mt-2 text-[color:var(--muted)]">
-              High school and college students, plus recent grads.
-            </p>
-          </article>
-          <article className="auditor-result-card">
-            <p className="auditor-result-label">Problem it solves</p>
-            <p className="mt-2 text-[color:var(--muted)]">
-              Unclear career direction, random certifications, and weak job-market alignment.
-            </p>
-          </article>
-          <article className="auditor-result-card">
-            <p className="auditor-result-label">Why this is better</p>
-            <p className="mt-2 text-[color:var(--muted)]">
-              OpenAI guidance + proof-backed tracking + measurable readiness in one flow.
-            </p>
-          </article>
-          <article className="auditor-result-card">
-            <p className="auditor-result-label">What to do now</p>
-            <p className="mt-2 text-[color:var(--muted)]">
-              Run your AI audit, review your path, then execute your next milestone.
-            </p>
-          </article>
-        </div>
         {isLoggedIn && (
-          <p className="mt-4 text-sm text-[color:var(--muted)]">
-            Weekly proof streak: {weeklyStreak?.current_streak_weeks ?? 0} week(s)
+          <p className="mt-4 text-sm text-zinc-400">
+            Welcome back, {displayName}. Weekly proof streak: {weeklyStreak?.current_streak_weeks ?? 0} week(s)
           </p>
         )}
-        <div className="hero-actions">
-          {isLoggedIn ? (
-            <>
-              <Link href="/student/checklist" className="cta">
-                Continue My Plan
-              </Link>
-              <Link href="/student/readiness" className="cta cta-secondary">
-                View My Score
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link href="/register" className="cta">
-                Create My Plan
-              </Link>
-              <Link href="/login" className="cta cta-secondary">
-                Login
-              </Link>
-            </>
-          )}
+        <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <Link
+            href={isLoggedIn ? "/student/readiness" : "/login"}
+            className="mt-10 px-8 py-4 text-lg font-semibold bg-indigo-600 hover:bg-indigo-500 rounded-xl transition transform hover:scale-105"
+          >
+            🔮 Stress-Test My Career
+          </Link>
+          <a
+            href="#future-shock"
+            className="mt-10 px-8 py-4 text-lg font-semibold border border-zinc-700 text-zinc-100 hover:bg-zinc-800 rounded-xl transition"
+          >
+            See How It Works
+          </a>
+        </div>
+      </section>
+
+      <section id="future-shock" className="bg-zinc-950 text-white py-24 px-6 text-center rounded-3xl border border-zinc-800">
+        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 shadow-2xl shadow-indigo-900/30 p-10 max-w-3xl mx-auto">
+          <h2 className="text-3xl font-bold">🔮 Simulate AI-Accelerated Market (2027)</h2>
+          <p className="mt-5 text-zinc-300">Current Readiness: 82</p>
+          <p className="text-6xl font-extrabold mt-6">{score}</p>
+          <p className="text-red-500 font-semibold text-lg mt-4">Δ -19 • Risk Level: HIGH</p>
+          <p className="text-zinc-400 mt-6">
+            AI skill demand increases 40%
+            <br />
+            Generic frontend demand decreases 25%
+          </p>
         </div>
       </section>
 

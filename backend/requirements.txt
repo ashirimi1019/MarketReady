@@ -8,4 +8,5 @@ python-multipart
 alembic
 boto3
 httpx
+pypdf
 pytest

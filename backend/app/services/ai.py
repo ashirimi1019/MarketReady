@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import re
 import time
+from threading import Lock
 import zipfile
 from typing import Any
 from collections import Counter
@@ -29,8 +30,11 @@ from app.services.readiness import calculate_readiness
 from app.services.storage import is_s3_object_url, read_s3_object_bytes
 
 MAX_EVIDENCE_CHARS = 4000
-MAX_RESUME_CONTEXT_CHARS = 12000
-MAX_RESUME_READ_BYTES = 250000
+MAX_RESUME_CONTEXT_CHARS = 120_000
+MAX_RESUME_TEXT_READ_BYTES = 5 * 1024 * 1024
+MAX_RESUME_BINARY_READ_BYTES = 25 * 1024 * 1024
+MAX_RESUME_PDF_PAGES = 200
+RESUME_CONTEXT_CACHE_TTL_SECONDS = 15 * 60
 SUPPORTED_LLM_PROVIDERS = {"groq", "openai"}
 RESUME_MATCH_PROOF_TYPE = "resume_upload_match"
 RESUME_MATCH_THRESHOLD = 0.65
@@ -72,6 +76,8 @@ GENERAL_PROOF_TYPES = [
     "internship_letter",
     "resume_upload",
 ]
+_resume_context_cache_lock = Lock()
+_resume_context_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def _truncate(text: str, limit: int = MAX_EVIDENCE_CHARS) -> str:
@@ -119,6 +125,47 @@ def _extract_text_from_bytes(blob: bytes, *, limit: int = MAX_EVIDENCE_CHARS) ->
     return _clean_text(text, limit=limit)
 
 
+def _resume_cache_key(profile: StudentProfile) -> str:
+    uploaded_at = getattr(profile, "resume_uploaded_at", None)
+    uploaded_label = uploaded_at.isoformat() if uploaded_at else "na"
+    return "|".join(
+        [
+            str(getattr(profile, "user_id", "") or ""),
+            str(getattr(profile, "resume_url", "") or ""),
+            str(getattr(profile, "resume_filename", "") or ""),
+            uploaded_label,
+        ]
+    )
+
+
+def _resume_cache_get(cache_key: str) -> dict[str, Any] | None:
+    now = time.time()
+    with _resume_context_cache_lock:
+        cached = _resume_context_cache.get(cache_key)
+        if not cached:
+            return None
+        expires_at, payload = cached
+        if now > expires_at:
+            _resume_context_cache.pop(cache_key, None)
+            return None
+        return dict(payload)
+
+
+def _resume_cache_set(cache_key: str, payload: dict[str, Any]) -> None:
+    expires_at = time.time() + RESUME_CONTEXT_CACHE_TTL_SECONDS
+    with _resume_context_cache_lock:
+        _resume_context_cache[cache_key] = (expires_at, dict(payload))
+        if len(_resume_context_cache) > 256:
+            oldest_key = min(_resume_context_cache.items(), key=lambda item: item[1][0])[0]
+            _resume_context_cache.pop(oldest_key, None)
+
+
+def _resume_read_limit(suffix: str) -> int:
+    if suffix in {".pdf", ".docx", ".doc", ".rtf"}:
+        return MAX_RESUME_BINARY_READ_BYTES
+    return MAX_RESUME_TEXT_READ_BYTES
+
+
 def _extract_local_file_text(
     path: Path,
     *,
@@ -144,6 +191,16 @@ def _extract_docx_text(path: Path) -> str | None:
     return _clean_text(unescape(text), limit=MAX_RESUME_CONTEXT_CHARS)
 
 
+def _extract_rtf_text(raw_text: str) -> str | None:
+    if not raw_text:
+        return None
+    text = re.sub(r"\\'[0-9a-fA-F]{2}", " ", raw_text)
+    text = re.sub(r"\\[a-zA-Z]+\d* ?", " ", text)
+    text = text.replace("{", " ").replace("}", " ")
+    cleaned = _clean_text(text, limit=MAX_RESUME_CONTEXT_CHARS)
+    return cleaned or None
+
+
 def _extract_pdf_text(path: Path) -> str | None:
     try:
         from pypdf import PdfReader  # type: ignore
@@ -151,24 +208,45 @@ def _extract_pdf_text(path: Path) -> str | None:
         return None
     try:
         reader = PdfReader(str(path))
-        parts: list[str] = []
-        for page in reader.pages[:10]:
-            page_text = page.extract_text() or ""
-            if page_text:
-                parts.append(page_text)
-        if not parts:
-            return None
-        return _clean_text("\n".join(parts), limit=MAX_RESUME_CONTEXT_CHARS)
+        return _extract_pdf_text_from_reader(reader)
     except Exception:
         return None
 
 
+def _extract_pdf_text_from_reader(reader: Any) -> str | None:
+    parts: list[str] = []
+    for idx, page in enumerate(reader.pages):
+        if idx >= MAX_RESUME_PDF_PAGES:
+            break
+        page_text = page.extract_text() or ""
+        if page_text:
+            parts.append(page_text)
+    if not parts:
+        return None
+    return _clean_text("\n".join(parts), limit=MAX_RESUME_CONTEXT_CHARS)
+
+
 def _extract_resume_file_text(path: Path) -> str | None:
     suffix = path.suffix.lower()
-    if suffix in {".txt", ".md", ".rtf", ".csv", ".json"}:
+    if suffix in {".txt", ".md", ".csv", ".json"}:
         return _extract_local_file_text(
             path,
-            read_bytes=MAX_RESUME_READ_BYTES,
+            read_bytes=_resume_read_limit(suffix),
+            limit=MAX_RESUME_CONTEXT_CHARS,
+        )
+    if suffix == ".rtf":
+        raw = _extract_local_file_text(
+            path,
+            read_bytes=MAX_RESUME_BINARY_READ_BYTES,
+            limit=MAX_RESUME_BINARY_READ_BYTES,
+        )
+        if raw:
+            parsed_rtf = _extract_rtf_text(raw)
+            if parsed_rtf:
+                return parsed_rtf
+        return _extract_local_file_text(
+            path,
+            read_bytes=_resume_read_limit(suffix),
             limit=MAX_RESUME_CONTEXT_CHARS,
         )
     if suffix == ".docx":
@@ -181,13 +259,20 @@ def _extract_resume_file_text(path: Path) -> str | None:
             return parsed
     return _extract_local_file_text(
         path,
-        read_bytes=MAX_RESUME_READ_BYTES,
+        read_bytes=_resume_read_limit(suffix),
         limit=MAX_RESUME_CONTEXT_CHARS,
     )
 
 
 def _extract_resume_blob_text(blob: bytes, suffix: str) -> str | None:
-    if suffix in {".txt", ".md", ".rtf", ".csv", ".json"}:
+    if suffix in {".txt", ".md", ".csv", ".json"}:
+        return _extract_text_from_bytes(blob, limit=MAX_RESUME_CONTEXT_CHARS)
+    if suffix == ".rtf":
+        raw = _extract_text_from_bytes(blob, limit=MAX_RESUME_BINARY_READ_BYTES)
+        if raw:
+            parsed_rtf = _extract_rtf_text(raw)
+            if parsed_rtf:
+                return parsed_rtf
         return _extract_text_from_bytes(blob, limit=MAX_RESUME_CONTEXT_CHARS)
     if suffix == ".docx":
         try:
@@ -197,24 +282,20 @@ def _extract_resume_blob_text(blob: bytes, suffix: str) -> str | None:
             text = re.sub(r"<[^>]+>", " ", xml)
             return _clean_text(unescape(text), limit=MAX_RESUME_CONTEXT_CHARS)
         except Exception:
-            return None
+            return _extract_text_from_bytes(blob, limit=MAX_RESUME_CONTEXT_CHARS)
     if suffix == ".pdf":
         try:
             from pypdf import PdfReader  # type: ignore
         except Exception:
-            return None
+            return _extract_text_from_bytes(blob, limit=MAX_RESUME_CONTEXT_CHARS)
         try:
             reader = PdfReader(io.BytesIO(blob))
-            parts: list[str] = []
-            for page in reader.pages[:10]:
-                page_text = page.extract_text() or ""
-                if page_text:
-                    parts.append(page_text)
-            if not parts:
-                return None
-            return _clean_text("\n".join(parts), limit=MAX_RESUME_CONTEXT_CHARS)
+            parsed = _extract_pdf_text_from_reader(reader)
+            if not parsed:
+                return _extract_text_from_bytes(blob, limit=MAX_RESUME_CONTEXT_CHARS)
+            return parsed
         except Exception:
-            return None
+            return _extract_text_from_bytes(blob, limit=MAX_RESUME_CONTEXT_CHARS)
     return _extract_text_from_bytes(blob, limit=MAX_RESUME_CONTEXT_CHARS)
 
 
@@ -270,11 +351,18 @@ def _extract_resume_context(profile: StudentProfile | None) -> dict[str, Any] | 
     if not profile or not getattr(profile, "resume_url", None):
         return None
 
+    cache_key = _resume_cache_key(profile)
+    cached = _resume_cache_get(cache_key)
+    if cached:
+        return cached
+
     resume_url = profile.resume_url
     resume_text = None
+    suffix = Path((getattr(profile, "resume_filename", "") or resume_url)).suffix.lower()
     resume_meta: dict[str, Any] = {
         "resume_url": resume_url,
         "resume_filename": getattr(profile, "resume_filename", None),
+        "resume_suffix": suffix or None,
         "resume_uploaded_at": (
             profile.resume_uploaded_at.isoformat()
             if getattr(profile, "resume_uploaded_at", None)
@@ -285,11 +373,14 @@ def _extract_resume_context(profile: StudentProfile | None) -> dict[str, Any] | 
         local_path = Path(settings.local_upload_dir) / resume_url.removeprefix("/uploads/")
         resume_text = _extract_resume_file_text(local_path)
         resume_meta["source"] = "local_upload"
+        resume_meta["read_limit_bytes"] = _resume_read_limit(suffix)
     elif is_s3_object_url(resume_url):
-        blob = read_s3_object_bytes(resume_url, max_bytes=MAX_RESUME_READ_BYTES)
-        suffix = Path((getattr(profile, "resume_filename", "") or resume_url)).suffix.lower()
+        read_limit = _resume_read_limit(suffix)
+        blob = read_s3_object_bytes(resume_url, max_bytes=read_limit)
         resume_text = _extract_resume_blob_text(blob, suffix) if blob else None
         resume_meta["source"] = "s3_object"
+        resume_meta["read_limit_bytes"] = read_limit
+        resume_meta["blob_loaded"] = bool(blob)
     elif resume_url.startswith("http://") or resume_url.startswith("https://"):
         fetched_text, fetched_meta = _fetch_url_text(resume_url)
         resume_text = _truncate(fetched_text or "", limit=MAX_RESUME_CONTEXT_CHARS) if fetched_text else None
@@ -301,6 +392,11 @@ def _extract_resume_context(profile: StudentProfile | None) -> dict[str, Any] | 
 
     if resume_text:
         resume_meta["resume_excerpt"] = resume_text
+        resume_meta["resume_text_chars"] = len(resume_text)
+        resume_meta["resume_parse_status"] = "parsed"
+    else:
+        resume_meta["resume_parse_status"] = "no_text_extracted"
+    _resume_cache_set(cache_key, resume_meta)
     return resume_meta
 
 
@@ -478,10 +574,10 @@ def _extract_proof_evidence_excerpt(proof: Proof) -> tuple[str | None, dict[str,
         evidence_text = _extract_resume_file_text(local_path) or _extract_local_file_text(local_path)
         meta["source"] = "local_upload"
     elif is_s3_object_url(url):
-        blob = read_s3_object_bytes(url, max_bytes=MAX_RESUME_READ_BYTES)
         suffix_hint = Path(
             str((proof.metadata_json or {}).get("filename") or (proof.metadata_json or {}).get("name") or url)
         ).suffix.lower()
+        blob = read_s3_object_bytes(url, max_bytes=_resume_read_limit(suffix_hint))
         evidence_text = _extract_resume_blob_text(blob, suffix_hint) if blob else None
         meta["source"] = "s3_object"
     elif url.startswith("http://") or url.startswith("https://"):
@@ -2002,7 +2098,7 @@ def generate_student_guidance(
     selection = db.query(UserPathway).filter(UserPathway.user_id == user_id).one_or_none()
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
     resume_context = _extract_resume_context(profile)
-    resume_detected = bool(profile and getattr(profile, "resume_url", None))
+    resume_detected = bool(resume_context and resume_context.get("resume_excerpt"))
 
     if not selection:
         market_context = _build_global_market_context(db)
