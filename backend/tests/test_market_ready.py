@@ -6,12 +6,12 @@ import time
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
-    BASE_URL = "https://7be5a208-9532-4df3-bc70-81686eaa39fd.preview.emergentagent.com/api"
+    BASE_URL = "https://market-sentinel-54.preview.emergentagent.com/api"
     BASE_URL = BASE_URL.rstrip("/api") if BASE_URL.endswith("/api") else BASE_URL
 
 
 # Use environment variable
-BACKEND_BASE = "https://7be5a208-9532-4df3-bc70-81686eaa39fd.preview.emergentagent.com"
+BACKEND_BASE = "https://market-sentinel-54.preview.emergentagent.com"
 
 TEST_USERNAME = f"testuser_auto_{int(time.time())}"
 TEST_PASSWORD = "TestPass123!"
