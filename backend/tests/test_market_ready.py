@@ -80,10 +80,20 @@ class TestAIEndpoints:
     @pytest.fixture(autouse=True)
     def setup_token(self):
         if "token" not in auth_token_store:
+            # Try login first, register if needed
             r = requests.post(f"{BACKEND_BASE}/api/auth/login", json={
                 "username": TEST_USERNAME,
                 "password": TEST_PASSWORD,
             })
+            if r.status_code != 200:
+                reg = requests.post(f"{BACKEND_BASE}/api/auth/register", json={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                })
+                r = requests.post(f"{BACKEND_BASE}/api/auth/login", json={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                })
             if r.status_code == 200:
                 auth_token_store["token"] = r.json()["auth_token"]
             else:
