@@ -6,6 +6,42 @@ import { getErrorMessage, getRetryAfterSeconds, isRateLimited } from "@/lib/erro
 import { useSession } from "@/lib/session";
 import type { ChecklistItem, AiGuide } from "@/types/api";
 
+type AiIfIWereYouOut = {
+  summary: string;
+  fastest_path: string[];
+  realistic_next_moves: string[];
+  avoid_now: string[];
+  recommended_certificates: string[];
+  uncertainty?: string | null;
+};
+
+type AiEmotionalResetOut = {
+  title: string;
+  story: string;
+  reframe: string;
+  action_plan: string[];
+  uncertainty?: string | null;
+};
+
+type AiRebuildPlanOut = {
+  summary: string;
+  day_0_30: string[];
+  day_31_60: string[];
+  day_61_90: string[];
+  weekly_targets: string[];
+  portfolio_targets: string[];
+  recommended_certificates: string[];
+  uncertainty?: string | null;
+};
+
+type AiCollegeGapOut = {
+  job_description_playbook: string[];
+  reverse_engineer_skills: string[];
+  project_that_recruiters_care: string[];
+  networking_strategy: string[];
+  uncertainty?: string | null;
+};
+
 export default function StudentAiGuidePage() {
   const { username, isLoggedIn } = useSession();
   const headers = useMemo(() => ({ "X-User-Id": username }), [username]);
@@ -18,6 +54,29 @@ export default function StudentAiGuidePage() {
   );
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
+  const [ifGpa, setIfGpa] = useState("");
+  const [ifInternship, setIfInternship] = useState("");
+  const [ifIndustry, setIfIndustry] = useState("");
+  const [ifLocation, setIfLocation] = useState("");
+  const [ifResult, setIfResult] = useState<AiIfIWereYouOut | null>(null);
+  const [ifLoading, setIfLoading] = useState(false);
+  const [ifError, setIfError] = useState<string | null>(null);
+  const [emotionalContext, setEmotionalContext] = useState("");
+  const [emotionalResult, setEmotionalResult] = useState<AiEmotionalResetOut | null>(null);
+  const [emotionalLoading, setEmotionalLoading] = useState(false);
+  const [emotionalError, setEmotionalError] = useState<string | null>(null);
+  const [planSkills, setPlanSkills] = useState("");
+  const [planTargetJob, setPlanTargetJob] = useState("");
+  const [planLocation, setPlanLocation] = useState("");
+  const [planHours, setPlanHours] = useState("8");
+  const [planResult, setPlanResult] = useState<AiRebuildPlanOut | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [gapTargetJob, setGapTargetJob] = useState("");
+  const [gapCurrentSkills, setGapCurrentSkills] = useState("");
+  const [gapResult, setGapResult] = useState<AiCollegeGapOut | null>(null);
+  const [gapLoading, setGapLoading] = useState(false);
+  const [gapError, setGapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -102,15 +161,142 @@ export default function StudentAiGuidePage() {
     }
   };
 
+  const runIfIWereYou = async () => {
+    if (!isLoggedIn) {
+      setIfError("Please log in to use this service.");
+      return;
+    }
+    setIfLoading(true);
+    setIfError(null);
+    try {
+      const parsedGpa = ifGpa.trim() ? Number(ifGpa) : null;
+      const data = await apiSend<AiIfIWereYouOut>("/user/ai/if-i-were-you", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gpa: parsedGpa !== null && Number.isFinite(parsedGpa) ? parsedGpa : null,
+          internship_history: ifInternship.trim() || null,
+          industry: ifIndustry.trim() || null,
+          location: ifLocation.trim() || null,
+        }),
+      });
+      setIfResult(data);
+    } catch (err) {
+      setIfError(getErrorMessage(err) || "Service unavailable.");
+    } finally {
+      setIfLoading(false);
+    }
+  };
+
+  const runEmotionalReset = async () => {
+    if (!isLoggedIn) {
+      setEmotionalError("Please log in to use this service.");
+      return;
+    }
+    setEmotionalLoading(true);
+    setEmotionalError(null);
+    try {
+      const data = await apiSend<AiEmotionalResetOut>("/user/ai/emotional-reset", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          story_context: emotionalContext.trim() || null,
+        }),
+      });
+      setEmotionalResult(data);
+    } catch (err) {
+      setEmotionalError(getErrorMessage(err) || "Service unavailable.");
+    } finally {
+      setEmotionalLoading(false);
+    }
+  };
+
+  const runRebuildPlan = async () => {
+    if (!isLoggedIn) {
+      setPlanError("Please log in to use this service.");
+      return;
+    }
+    if (!planSkills.trim() || !planTargetJob.trim()) {
+      setPlanError("Current skills and target job are required.");
+      return;
+    }
+    setPlanLoading(true);
+    setPlanError(null);
+    try {
+      const parsedHours = Number(planHours);
+      const data = await apiSend<AiRebuildPlanOut>("/user/ai/rebuild-90-day", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          current_skills: planSkills.trim(),
+          target_job: planTargetJob.trim(),
+          location: planLocation.trim() || null,
+          hours_per_week: Number.isFinite(parsedHours) ? parsedHours : 8,
+        }),
+      });
+      setPlanResult(data);
+    } catch (err) {
+      setPlanError(getErrorMessage(err) || "Service unavailable.");
+    } finally {
+      setPlanLoading(false);
+    }
+  };
+
+  const runCollegeGap = async () => {
+    if (!isLoggedIn) {
+      setGapError("Please log in to use this service.");
+      return;
+    }
+    setGapLoading(true);
+    setGapError(null);
+    try {
+      const data = await apiSend<AiCollegeGapOut>("/user/ai/college-gap-playbook", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          target_job: gapTargetJob.trim() || null,
+          current_skills: gapCurrentSkills.trim() || null,
+        }),
+      });
+      setGapResult(data);
+    } catch (err) {
+      setGapError(getErrorMessage(err) || "Service unavailable.");
+    } finally {
+      setGapLoading(false);
+    }
+  };
+
   return (
     <section className="panel">
-      <h2 className="text-3xl font-semibold">AI Guide - Powered by OpenAI</h2>
+      <h2 className="text-3xl font-semibold">AI Career Services</h2>
       <p className="mt-2 text-[color:var(--muted)]">
-        Powered by OpenAI. Grounded recommendations based on your checklist, milestones, profile, and market signals.
+        This tab combines targeted guidance, practical recovery support, and structured execution planning to help you move faster toward the right role.
       </p>
+      <div className="mt-4 rounded-xl border border-[color:var(--border)] p-4 text-sm text-[color:var(--muted)]">
+        <p>What you can do here:</p>
+        <ul className="mt-2 grid gap-1">
+          <li>Get direct guidance from your current checklist and profile context.</li>
+          <li>Use If I Were You Mode for realistic next moves based on your background.</li>
+          <li>Use Graduated But Feel Behind for emotional reset plus practical actions.</li>
+          <li>Generate a 90-Day Rebuild Plan with weekly execution targets.</li>
+          <li>Use College Didn&apos;t Teach Me This for job-description and networking playbooks.</li>
+        </ul>
+      </div>
       {!isLoggedIn && (
         <p className="mt-4 text-sm text-[color:var(--accent-2)]">
-          Please log in to use the OpenAI guide.
+          Please log in to use AI Career Services.
         </p>
       )}
       <div className="mt-6 grid gap-3">
@@ -350,6 +536,96 @@ export default function StudentAiGuidePage() {
           </div>
         </div>
       )}
+
+      <div className="mt-8 grid gap-6">
+        <div className="rounded-xl border border-[color:var(--border)] p-5">
+          <h3 className="text-xl font-semibold">If I Were You Mode</h3>
+          <p className="mt-2 text-[color:var(--muted)]">
+            Realistic next moves based on GPA, internship history, industry, and location.
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <input className="rounded-lg border border-[color:var(--border)] p-3" type="number" min={0} max={4} step="0.01" placeholder="GPA (optional)" value={ifGpa} onChange={(e) => setIfGpa(e.target.value)} />
+            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Target industry" value={ifIndustry} onChange={(e) => setIfIndustry(e.target.value)} />
+            <textarea className="rounded-lg border border-[color:var(--border)] p-3 md:col-span-2" placeholder="Internship history" value={ifInternship} onChange={(e) => setIfInternship(e.target.value)} />
+            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Location" value={ifLocation} onChange={(e) => setIfLocation(e.target.value)} />
+          </div>
+          <div className="mt-3">
+            <button className="cta" onClick={runIfIWereYou} disabled={!isLoggedIn || ifLoading}>{ifLoading ? "Generating..." : "Generate My Path"}</button>
+          </div>
+          {ifError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{ifError}</p>}
+          {ifResult && (
+            <div className="mt-4 grid gap-3 text-[color:var(--muted)]">
+              <p><span className="font-semibold text-white">Summary:</span> {ifResult.summary}</p>
+              <p className="font-semibold text-white">Fastest Path</p>
+              <ul className="grid gap-1">{ifResult.fastest_path.map((item) => <li key={item}>{item}</li>)}</ul>
+              <p className="font-semibold text-white">Realistic Next Moves</p>
+              <ul className="grid gap-1">{ifResult.realistic_next_moves.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-[color:var(--border)] p-5">
+          <h3 className="text-xl font-semibold">Graduated But Feel Behind?</h3>
+          <p className="mt-2 text-[color:var(--muted)]">Get structured emotional reset plus action-oriented direction.</p>
+          <textarea className="mt-4 w-full rounded-lg border border-[color:var(--border)] p-3" placeholder="Share your current situation (optional)" value={emotionalContext} onChange={(e) => setEmotionalContext(e.target.value)} />
+          <div className="mt-3">
+            <button className="cta" onClick={runEmotionalReset} disabled={!isLoggedIn || emotionalLoading}>{emotionalLoading ? "Generating..." : "Generate Reset Plan"}</button>
+          </div>
+          {emotionalError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{emotionalError}</p>}
+          {emotionalResult && (
+            <div className="mt-4 grid gap-2 text-[color:var(--muted)]">
+              <p className="font-semibold text-white">{emotionalResult.title}</p>
+              <p>{emotionalResult.story}</p>
+              <p><span className="font-semibold text-white">Reframe:</span> {emotionalResult.reframe}</p>
+              <ul className="grid gap-1">{emotionalResult.action_plan.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-[color:var(--border)] p-5">
+          <h3 className="text-xl font-semibold">90-Day Rebuild Plan Generator</h3>
+          <p className="mt-2 text-[color:var(--muted)]">Create a practical 90-day plan from your current skills and target role.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <textarea className="rounded-lg border border-[color:var(--border)] p-3 md:col-span-2" placeholder="Current skills" value={planSkills} onChange={(e) => setPlanSkills(e.target.value)} />
+            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Target job" value={planTargetJob} onChange={(e) => setPlanTargetJob(e.target.value)} />
+            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Location" value={planLocation} onChange={(e) => setPlanLocation(e.target.value)} />
+            <input className="rounded-lg border border-[color:var(--border)] p-3" type="number" min={1} max={80} placeholder="Hours per week" value={planHours} onChange={(e) => setPlanHours(e.target.value)} />
+          </div>
+          <div className="mt-3">
+            <button className="cta" onClick={runRebuildPlan} disabled={!isLoggedIn || planLoading}>{planLoading ? "Building..." : "Generate 90-Day Plan"}</button>
+          </div>
+          {planError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{planError}</p>}
+          {planResult && (
+            <div className="mt-4 grid gap-2 text-[color:var(--muted)]">
+              <p className="font-semibold text-white">Summary</p>
+              <p>{planResult.summary}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-[color:var(--border)] p-5">
+          <h3 className="text-xl font-semibold">College Didn&apos;t Teach Me This</h3>
+          <p className="mt-2 text-[color:var(--muted)]">Generate practical playbooks for job descriptions, project strategy, and networking.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Target job" value={gapTargetJob} onChange={(e) => setGapTargetJob(e.target.value)} />
+            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Current skills" value={gapCurrentSkills} onChange={(e) => setGapCurrentSkills(e.target.value)} />
+          </div>
+          <div className="mt-3">
+            <button className="cta" onClick={runCollegeGap} disabled={!isLoggedIn || gapLoading}>{gapLoading ? "Generating..." : "Generate Playbook"}</button>
+          </div>
+          {gapError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{gapError}</p>}
+          {gapResult && (
+            <div className="mt-4 grid gap-2 text-[color:var(--muted)]">
+              <p className="font-semibold text-white">How To Read Job Descriptions</p>
+              <ul className="grid gap-1">{gapResult.job_description_playbook.map((item) => <li key={item}>{item}</li>)}</ul>
+            </div>
+          )}
+        </div>
+
+        <p className="text-sm text-[color:var(--muted)]">
+          All services in this tab are powered by OpenAI.
+        </p>
+      </div>
     </section>
   );
 }
