@@ -391,6 +391,77 @@ export default function StudentProfilePage() {
           <span className="text-sm text-[color:var(--muted)]">{message}</span>
         )}
       </div>
+
+      {/* Truth-Link: Share with Recruiters */}
+      {isLoggedIn && <SharePanel />}
     </section>
+  );
+}
+
+function SharePanel() {
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [slug, setSlug] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const generate = async () => {
+    setLoading(true);
+    try {
+      const data = await apiSend<{ share_url: string; share_slug: string }>("/profile/generate-share-link", { method: "POST" });
+      setShareUrl(data.share_url);
+      setSlug(data.share_slug);
+    } catch {}
+    setLoading(false);
+  };
+
+  const copyLink = async () => {
+    if (!shareUrl) return;
+    await navigator.clipboard.writeText(shareUrl).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="mt-6 rounded-xl border border-[color:var(--border)] p-5" data-testid="share-panel">
+      <h3 className="text-lg font-semibold mb-2">Share with Recruiters</h3>
+      <p className="text-sm text-[color:var(--muted)] mb-4">
+        Generate a public, verified profile link to share with recruiters — no signup required for them.
+      </p>
+      {!shareUrl ? (
+        <button className="cta cta-primary" onClick={generate} disabled={loading} data-testid="generate-share-link-btn">
+          {loading ? "Generating..." : "Generate Share Link"}
+        </button>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={shareUrl}
+              className="flex-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--input-bg)] px-3 py-2 text-sm font-mono"
+              data-testid="share-link-input"
+            />
+            <button className="cta cta-secondary text-sm px-4" onClick={copyLink} data-testid="copy-link-btn">
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          {QRCodeSVG && (
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-xs text-[color:var(--muted)]">QR Code for recruiters</p>
+              <div className="p-3 rounded-xl bg-white" data-testid="qr-code">
+                <QRCodeSVG value={shareUrl} size={140} />
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <a href={shareUrl} target="_blank" rel="noopener noreferrer" className="cta cta-secondary text-sm" data-testid="view-public-profile-btn">
+              Preview Profile
+            </a>
+            <button className="cta cta-secondary text-sm" onClick={generate} data-testid="regenerate-link-btn">
+              Regenerate
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
