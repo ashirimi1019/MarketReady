@@ -12,6 +12,8 @@ type MRIData = {
   recommendations: string[];
   band: string;
   formula: string;
+  proficiency_breakdown?: { beginner: number; intermediate: number; professional: number };
+  ai_verified_certs?: number;
 };
 
 type GitHubAudit = {
