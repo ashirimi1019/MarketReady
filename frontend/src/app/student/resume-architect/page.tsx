@@ -36,7 +36,7 @@ export default function StudentResumeArchitectPage() {
 
   const generateResume = async () => {
     if (!isLoggedIn) {
-      setError("Please log in to generate a resume.");
+      setError("Please log in to generate a skill-gap artifact.");
       return;
     }
     setLoading(true);
@@ -55,7 +55,7 @@ export default function StudentResumeArchitectPage() {
         }),
       });
       setActiveArtifact(artifact);
-      setMessage("Resume draft generated from your proof vault.");
+      setMessage("Skill-gap artifact generated from your proof vault.");
       loadArtifacts();
     } catch (err) {
       const message = getErrorMessage(err);
@@ -64,7 +64,7 @@ export default function StudentResumeArchitectPage() {
           "Resume endpoint was not found on the backend. Redeploy backend to latest and verify NEXT_PUBLIC_API_BASE."
         );
       } else {
-        setError(message || "Could not generate resume.");
+        setError(message || "Could not generate skill-gap artifact.");
       }
     } finally {
       setLoading(false);
@@ -75,22 +75,22 @@ export default function StudentResumeArchitectPage() {
     if (!activeArtifact?.markdown_content) return;
     try {
       await navigator.clipboard.writeText(activeArtifact.markdown_content);
-      setMessage("Resume markdown copied.");
+      setMessage("Artifact markdown copied.");
     } catch {
-      setError("Could not copy resume text.");
+      setError("Could not copy artifact text.");
     }
   };
 
   return (
     <section className="panel">
-      <h2 className="text-3xl font-semibold">AI Resume Architect · Powered by OpenAI</h2>
+      <h2 className="text-3xl font-semibold">Skill Gap Builder</h2>
       <p className="mt-2 text-[color:var(--muted)]">
-        Build ATS-optimized resumes directly from your profile and submitted proofs.
+        Generate market-facing gap-closing artifacts from your profile and submitted proofs.
       </p>
 
       {!isLoggedIn && (
         <p className="mt-4 text-sm text-[color:var(--accent-2)]">
-          Please log in to generate resume drafts.
+          Please log in to generate skill-gap artifacts.
         </p>
       )}
       {error && <p className="mt-4 text-sm text-[color:var(--accent-2)]">{error}</p>}
@@ -109,7 +109,7 @@ export default function StudentResumeArchitectPage() {
         </label>
         <div className="flex items-end">
           <button className="cta w-full" onClick={generateResume} disabled={!isLoggedIn || loading}>
-            {loading ? "Generating..." : "Generate Resume Draft"}
+            {loading ? "Generating..." : "Generate Gap-Closing Artifact"}
           </button>
         </div>
       </div>
@@ -121,13 +121,13 @@ export default function StudentResumeArchitectPage() {
           rows={5}
           value={jobDescription}
           onChange={(event) => setJobDescription(event.target.value)}
-          placeholder="Paste target job description for tailored keyword alignment."
+          placeholder="Paste target job description to prioritize missing skills."
         />
       </label>
 
       {artifacts.length > 0 && (
         <div className="mt-8">
-          <h3 className="text-xl font-semibold">Generated Drafts</h3>
+          <h3 className="text-xl font-semibold">Generated Artifacts</h3>
           <div className="mt-3 grid gap-3">
             {artifacts.map((artifact) => (
               <button
@@ -140,7 +140,7 @@ export default function StudentResumeArchitectPage() {
                 onClick={() => setActiveArtifact(artifact)}
               >
                 <p className="font-medium">
-                  {artifact.target_role || "General resume draft"}
+                  {artifact.target_role || "General skill-gap artifact"}
                 </p>
                 <p className="text-sm text-[color:var(--muted)]">
                   {new Date(artifact.created_at).toLocaleString()}
@@ -154,7 +154,7 @@ export default function StudentResumeArchitectPage() {
       {activeArtifact && (
         <div className="mt-8 rounded-xl border border-[color:var(--border)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-xl font-semibold">Resume Output</h3>
+            <h3 className="text-xl font-semibold">Artifact Output</h3>
             <button className="cta cta-secondary" onClick={copyResume}>
               Copy Markdown
             </button>
@@ -182,3 +182,4 @@ export default function StudentResumeArchitectPage() {
     </section>
   );
 }
+

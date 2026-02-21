@@ -6,12 +6,12 @@ import { getErrorMessage } from "@/lib/errors";
 import { useSession } from "@/lib/session";
 import type { AICareerOrchestrator, MarketStressTest, RepoProofChecker, StudentProfile } from "@/types/api";
 
-type TipOfDay = {
-  title: string;
-  story: string;
-  reframe: string;
-  action_plan: string[];
-};
+const STRATEGIC_TIPS = [
+  "Ship one public proof artifact every week, then rerun GitHub Proof Auditor.",
+  "When MRI trend cools down, prioritize transferable backend/cloud/security projects.",
+  "Treat missing skills as sprint tickets: one skill, one repo proof, one verified check.",
+  "Use local-demand signals to choose projects, not random tutorial paths.",
+];
 
 function trendLabel(value: string): string {
   if (value === "heating_up") return "Heating Up";
@@ -96,9 +96,10 @@ export default function StudentAiGuidePage() {
   const [orchestratorError, setOrchestratorError] = useState<string | null>(null);
   const [pivotLoading, setPivotLoading] = useState(false);
   const [pivotError, setPivotError] = useState<string | null>(null);
+  const [weeklyChecks, setWeeklyChecks] = useState<Record<string, boolean>>({});
+  const [tipSeed, setTipSeed] = useState(0);
 
   const [futureYear, setFutureYear] = useState(2026);
-  const [tip, setTip] = useState<TipOfDay | null>(null);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -164,17 +165,8 @@ export default function StudentAiGuidePage() {
   }, [headers, isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
-    apiSend<TipOfDay>("/user/ai/emotional-reset", {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        story_context: "Give one short practical motivation reset for this week.",
-      }),
-    })
-      .then((data) => setTip(data))
-      .catch(() => setTip(null));
-  }, [headers, isLoggedIn]);
+    setTipSeed(Math.floor(Math.random() * STRATEGIC_TIPS.length));
+  }, []);
 
   const runStressTest = async () => {
     if (!isLoggedIn) {
@@ -232,7 +224,11 @@ export default function StudentAiGuidePage() {
       setOrchestratorError("Please log in to run the mission planner.");
       return;
     }
-    pivotRequested ? setPivotLoading(true) : setOrchestratorLoading(true);
+    if (pivotRequested) {
+      setPivotLoading(true);
+    } else {
+      setOrchestratorLoading(true);
+    }
     setOrchestratorError(null);
     setPivotError(null);
 
@@ -251,10 +247,18 @@ export default function StudentAiGuidePage() {
       setOrchestratorResult(payload);
     } catch (err) {
       const message = getErrorMessage(err) || "Mission planner unavailable.";
-      pivotRequested ? setPivotError(message) : setOrchestratorError(message);
+      if (pivotRequested) {
+        setPivotError(message);
+      } else {
+        setOrchestratorError(message);
+      }
       setOrchestratorResult(null);
     } finally {
-      pivotRequested ? setPivotLoading(false) : setOrchestratorLoading(false);
+      if (pivotRequested) {
+        setPivotLoading(false);
+      } else {
+        setOrchestratorLoading(false);
+      }
     }
   };
 
@@ -266,11 +270,41 @@ export default function StudentAiGuidePage() {
   const projectedDelta = futureYear === 2027 && simulation ? simulation.delta : 0;
   const projectedRisk = futureYear === 2027 && simulation ? simulation.risk_level : "baseline";
 
-  const mission = (orchestratorResult?.mission_dashboard as Record<string, unknown>) || {};
-  const day0 = Array.isArray(mission.day_0_30) ? (mission.day_0_30 as string[]) : [];
-  const day31 = Array.isArray(mission.day_31_60) ? (mission.day_31_60 as string[]) : [];
-  const day61 = Array.isArray(mission.day_61_90) ? (mission.day_61_90 as string[]) : [];
-  const weekly = Array.isArray(mission.weekly_checkboxes) ? (mission.weekly_checkboxes as string[]) : [];
+  const mission = useMemo(
+    () => ((orchestratorResult?.mission_dashboard as Record<string, unknown>) || {}),
+    [orchestratorResult]
+  );
+  const day0 = useMemo(() => (Array.isArray(mission.day_0_30) ? (mission.day_0_30 as string[]) : []), [mission]);
+  const day31 = useMemo(() => (Array.isArray(mission.day_31_60) ? (mission.day_31_60 as string[]) : []), [mission]);
+  const day61 = useMemo(() => (Array.isArray(mission.day_61_90) ? (mission.day_61_90 as string[]) : []), [mission]);
+  const weekly = useMemo(
+    () => (Array.isArray(mission.weekly_checkboxes) ? (mission.weekly_checkboxes as string[]) : []),
+    [mission]
+  );
+  const weeklyCompleted = weekly.filter((item) => weeklyChecks[item]).length;
+  const weeklyProgressPct = weekly.length ? Math.round((weeklyCompleted / weekly.length) * 100) : 0;
+
+  useEffect(() => {
+    setWeeklyChecks((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const item of weekly) {
+        next[item] = prev[item] ?? false;
+      }
+      return next;
+    });
+  }, [weekly]);
+
+  const strategicTip = useMemo(() => {
+    const topMissingSkill = stressResult?.missing_skills?.[0];
+    if (topMissingSkill) {
+      return `Skill-gap move: build one public repo artifact for "${topMissingSkill}" and rerun Proof Auditor.`;
+    }
+    const repoGap = repoResult?.skills_required_but_missing?.[0];
+    if (repoGap) {
+      return `Code evidence move: close "${repoGap}" this week with one deployed project update.`;
+    }
+    return STRATEGIC_TIPS[tipSeed % STRATEGIC_TIPS.length];
+  }, [repoResult, stressResult, tipSeed]);
 
   return (
     <section className="panel space-y-6">
@@ -466,13 +500,27 @@ export default function StudentAiGuidePage() {
             <p className="text-sm text-[color:var(--muted)]">
               Confidence: <span className="font-semibold text-white">{repoResult.repo_confidence.toFixed(1)}%</span>
             </p>
+            <p className="text-sm text-[color:var(--muted)]">
+              Verified by code: <span className="font-semibold text-white">{repoResult.match_count}</span> / {repoResult.required_skills_count}
+            </p>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-black/40">
+              <div
+                className="h-full bg-emerald-400/80 transition-all"
+                style={{
+                  width: `${Math.max(
+                    0,
+                    Math.min(100, (repoResult.match_count / Math.max(repoResult.required_skills_count, 1)) * 100)
+                  )}%`,
+                }}
+              />
+            </div>
             <div>
               <p className="text-sm font-semibold text-white">Verified by code</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {repoResult.verified_by_repo_skills.length > 0 ? (
                   repoResult.verified_by_repo_skills.map((skill) => (
                     <span key={skill} className="rounded-full border border-green-500/50 bg-green-500/10 px-3 py-1 text-xs text-green-300">
-                      Verified: {skill}
+                      Check: {skill}
                     </span>
                   ))
                 ) : (
@@ -481,7 +529,7 @@ export default function StudentAiGuidePage() {
               </div>
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">Skill gap closing targets</p>
+              <p className="text-sm font-semibold text-white">Skill Gap Closing Targets</p>
               <ul className="mt-2 grid gap-1 text-sm text-[color:var(--muted)]">
                 {repoResult.skills_required_but_missing.slice(0, 8).map((skill) => (
                   <li key={skill}>- {skill}</li>
@@ -551,10 +599,26 @@ export default function StudentAiGuidePage() {
             </div>
             <div className="rounded-lg border border-[color:var(--border)] p-4">
               <p className="text-sm font-semibold text-white">Weekly checkboxes</p>
+              <p className="mt-1 text-xs text-[color:var(--muted)]">
+                Progress: {weeklyCompleted}/{weekly.length || 0} completed ({weeklyProgressPct}%)
+              </p>
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-black/40">
+                <div className="h-full bg-[color:var(--accent-2)]/80 transition-all" style={{ width: `${weeklyProgressPct}%` }} />
+              </div>
               <div className="mt-2 grid gap-2">
                 {weekly.map((item) => (
                   <label key={item} className="flex items-start gap-2 text-sm text-[color:var(--muted)]">
-                    <input type="checkbox" className="mt-0.5" />
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={Boolean(weeklyChecks[item])}
+                      onChange={() =>
+                        setWeeklyChecks((prev) => ({
+                          ...prev,
+                          [item]: !prev[item],
+                        }))
+                      }
+                    />
                     <span>{item}</span>
                   </label>
                 ))}
@@ -566,7 +630,7 @@ export default function StudentAiGuidePage() {
 
       <div className="rounded-xl border border-[color:var(--border)] bg-black/30 p-4 text-sm text-[color:var(--muted)]">
         <p className="font-semibold text-white">Tip of the Day</p>
-        {tip ? <p className="mt-1">{tip.reframe}</p> : <p className="mt-1">Consistent verified output beats occasional motivation spikes.</p>}
+        <p className="mt-1">{strategicTip}</p>
       </div>
     </section>
   );

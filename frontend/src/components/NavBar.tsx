@@ -80,8 +80,8 @@ export default function NavBar() {
         <Link href="/student/onboarding">My Plan</Link>
         <Link href="/student/proofs">Proof Vault</Link>
         <Link href="/student/interview">Interview AI</Link>
-        <Link href="/student/resume-architect">Resume AI</Link>
-        <Link href="/student/guide">AI Career Services</Link>
+        <Link href="/student/resume-architect">Skill Gap Builder</Link>
+        <Link href="/student/guide">Market Mission</Link>
       </nav>
       <div className="nav-auth-meta">
         <ThemeToggle />

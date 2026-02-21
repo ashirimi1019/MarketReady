@@ -15,15 +15,6 @@ type AiGuide = {
   uncertainty?: string | null;
 };
 
-type AiIfIWereYouOut = {
-  summary: string;
-  fastest_path: string[];
-  realistic_next_moves: string[];
-  avoid_now: string[];
-  recommended_certificates: string[];
-  uncertainty?: string | null;
-};
-
 type AiCertRoiOption = {
   certificate: string;
   cost_usd: string;
@@ -40,33 +31,6 @@ type AiCertRoiOut = {
   top_options: AiCertRoiOption[];
   winner?: string | null;
   recommendation: string;
-  uncertainty?: string | null;
-};
-
-type AiEmotionalResetOut = {
-  title: string;
-  story: string;
-  reframe: string;
-  action_plan: string[];
-  uncertainty?: string | null;
-};
-
-type AiRebuildPlanOut = {
-  summary: string;
-  day_0_30: string[];
-  day_31_60: string[];
-  day_61_90: string[];
-  weekly_targets: string[];
-  portfolio_targets: string[];
-  recommended_certificates: string[];
-  uncertainty?: string | null;
-};
-
-type AiCollegeGapOut = {
-  job_description_playbook: string[];
-  reverse_engineer_skills: string[];
-  project_that_recruiters_care: string[];
-  networking_strategy: string[];
   uncertainty?: string | null;
 };
 
@@ -127,13 +91,13 @@ const QUICK_LINKS = [
     href: "/student/interview",
   },
   {
-    title: "OpenAI Resume Architect",
-    text: "Generate ATS-ready resume drafts from your portal evidence.",
+    title: "Skill Gap Builder",
+    text: "Translate missing skills into build targets and recruiter-facing proof.",
     href: "/student/resume-architect",
   },
   {
-    title: "OpenAI Guide",
-    text: "Generate targeted recommendations on demand.",
+    title: "Market Mission Center",
+    text: "Run MRI, verify with GitHub, and launch your 90-day mission dashboard.",
     href: "/student/guide",
   },
   {
@@ -172,14 +136,6 @@ export default function Home() {
   const [guideError, setGuideError] = useState<string | null>(null);
   const [guideLoading, setGuideLoading] = useState(false);
 
-  const [ifGpa, setIfGpa] = useState("");
-  const [ifInternship, setIfInternship] = useState("");
-  const [ifIndustry, setIfIndustry] = useState("");
-  const [ifLocation, setIfLocation] = useState("");
-  const [ifResult, setIfResult] = useState<AiIfIWereYouOut | null>(null);
-  const [ifError, setIfError] = useState<string | null>(null);
-  const [ifLoading, setIfLoading] = useState(false);
-
   const [roiTargetRole, setRoiTargetRole] = useState("");
   const [roiCurrentSkills, setRoiCurrentSkills] = useState("");
   const [roiLocation, setRoiLocation] = useState("");
@@ -187,25 +143,6 @@ export default function Home() {
   const [roiResult, setRoiResult] = useState<AiCertRoiOut | null>(null);
   const [roiError, setRoiError] = useState<string | null>(null);
   const [roiLoading, setRoiLoading] = useState(false);
-
-  const [emotionalContext, setEmotionalContext] = useState("");
-  const [emotionalResult, setEmotionalResult] = useState<AiEmotionalResetOut | null>(null);
-  const [emotionalError, setEmotionalError] = useState<string | null>(null);
-  const [emotionalLoading, setEmotionalLoading] = useState(false);
-
-  const [planSkills, setPlanSkills] = useState("");
-  const [planTargetJob, setPlanTargetJob] = useState("");
-  const [planLocation, setPlanLocation] = useState("");
-  const [planHours, setPlanHours] = useState("8");
-  const [planResult, setPlanResult] = useState<AiRebuildPlanOut | null>(null);
-  const [planError, setPlanError] = useState<string | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-
-  const [gapTargetJob, setGapTargetJob] = useState("");
-  const [gapCurrentSkills, setGapCurrentSkills] = useState("");
-  const [gapResult, setGapResult] = useState<AiCollegeGapOut | null>(null);
-  const [gapError, setGapError] = useState<string | null>(null);
-  const [gapLoading, setGapLoading] = useState(false);
 
   const [proofStats, setProofStats] = useState({
     submitted: 0,
@@ -248,36 +185,6 @@ export default function Home() {
     }
   };
 
-  const runIfIWereYou = async () => {
-    if (requireLogin(setIfError)) return;
-    setIfLoading(true);
-    setIfError(null);
-    try {
-      const parsedGpa = ifGpa.trim() ? Number(ifGpa) : null;
-      const data = await apiSend<AiIfIWereYouOut>("/user/ai/if-i-were-you", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          gpa:
-            parsedGpa !== null && Number.isFinite(parsedGpa)
-              ? parsedGpa
-              : null,
-          internship_history: ifInternship.trim() || null,
-          industry: ifIndustry.trim() || null,
-          location: ifLocation.trim() || null,
-        }),
-      });
-      setIfResult(data);
-    } catch (error) {
-      setIfError(buildApiError(error, "OpenAI path planner unavailable."));
-    } finally {
-      setIfLoading(false);
-    }
-  };
-
   const runCertificationRoi = async () => {
     if (requireLogin(setRoiError)) return;
     setRoiLoading(true);
@@ -308,98 +215,12 @@ export default function Home() {
     }
   };
 
-  const runEmotionalReset = async () => {
-    if (requireLogin(setEmotionalError)) return;
-    setEmotionalLoading(true);
-    setEmotionalError(null);
-    try {
-      const data = await apiSend<AiEmotionalResetOut>("/user/ai/emotional-reset", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          story_context: emotionalContext.trim() || null,
-        }),
-      });
-      setEmotionalResult(data);
-    } catch (error) {
-      setEmotionalError(buildApiError(error, "OpenAI support module unavailable."));
-    } finally {
-      setEmotionalLoading(false);
-    }
-  };
-
-  const runRebuildPlan = async () => {
-    if (requireLogin(setPlanError)) return;
-    if (!planSkills.trim() || !planTargetJob.trim()) {
-      setPlanError("Current skills and target job are required.");
-      return;
-    }
-    setPlanLoading(true);
-    setPlanError(null);
-    try {
-      const parsedHours = Number(planHours);
-      const data = await apiSend<AiRebuildPlanOut>("/user/ai/rebuild-90-day", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          current_skills: planSkills.trim(),
-          target_job: planTargetJob.trim(),
-          location: planLocation.trim() || null,
-          hours_per_week: Number.isFinite(parsedHours) ? parsedHours : 8,
-        }),
-      });
-      setPlanResult(data);
-    } catch (error) {
-      setPlanError(buildApiError(error, "OpenAI 90-day plan unavailable."));
-    } finally {
-      setPlanLoading(false);
-    }
-  };
-
-  const runCollegeGap = async () => {
-    if (requireLogin(setGapError)) return;
-    setGapLoading(true);
-    setGapError(null);
-    try {
-      const data = await apiSend<AiCollegeGapOut>("/user/ai/college-gap-playbook", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          target_job: gapTargetJob.trim() || null,
-          current_skills: gapCurrentSkills.trim() || null,
-        }),
-      });
-      setGapResult(data);
-    } catch (error) {
-      setGapError(buildApiError(error, "OpenAI practical playbook unavailable."));
-    } finally {
-      setGapLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (isLoggedIn) return;
     setGuide(null);
     setGuideError(null);
-    setIfResult(null);
-    setIfError(null);
     setRoiResult(null);
     setRoiError(null);
-    setEmotionalResult(null);
-    setEmotionalError(null);
-    setPlanResult(null);
-    setPlanError(null);
-    setGapResult(null);
-    setGapError(null);
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -557,14 +378,14 @@ export default function Home() {
             *
           </span>
           <div>
-            <h2 className="section-title">AI Market Auditor - Powered by OpenAI</h2>
+            <h2 className="section-title">Skill Gap Closing Auditor</h2>
             <p className="section-subtitle">
-              Paste your resume highlights or project details and get focused role guidance.
+              Convert evidence context into concrete skill-gap actions tied to live demand.
             </p>
           </div>
         </div>
         <label className="auditor-label" htmlFor="audit-input">
-          Paste Resume Or Projects
+          Paste Evidence Context
         </label>
         <textarea
           id="audit-input"
@@ -576,7 +397,7 @@ export default function Home() {
         <div className="auditor-actions">
           {isLoggedIn ? (
             <button className="cta auditor-cta" onClick={runAudit} disabled={guideLoading}>
-              {guideLoading ? "Running Audit..." : "Audit My Readiness"}
+              {guideLoading ? "Running Audit..." : "Generate Skill Gap Actions"}
             </button>
           ) : (
             <Link className="cta auditor-cta" href="/login">
