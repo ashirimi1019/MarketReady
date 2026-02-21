@@ -11,6 +11,16 @@ from app.models.entities import (
 
 MRI_WEIGHTS = {"federal_standards": 0.40, "market_demand": 0.30, "evidence_density": 0.30}
 
+# Proficiency multipliers: how much each level contributes to the score
+PROFICIENCY_MULTIPLIERS = {
+    "professional": 1.0,
+    "intermediate": 0.75,
+    "beginner": 0.50,
+}
+
+# For non-negotiable items, AI-verified certs get a bonus
+AI_VERIFIED_BONUS = 1.15  # 15% bonus for AI-verified certificates
+
 router = APIRouter(prefix="/score")
 
 
