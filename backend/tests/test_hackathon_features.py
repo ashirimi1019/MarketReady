@@ -98,11 +98,12 @@ class TestGitHubAudit:
 
     def test_audit_invalid_user_404(self):
         """Non-existent GitHub user should return 404."""
+        # Valid-format username that doesn't exist on GitHub (max 39 chars)
         resp = requests.get(
-            f"{BASE_URL}/github/audit/this-user-definitely-does-not-exist-xyz-12345abc",
+            f"{BASE_URL}/github/audit/nonexistent-user-xyz99abc",
             timeout=20,
         )
-        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
+        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
         print("PASS: 404 for non-existent user")
 
     def test_audit_no_auth_required(self):
