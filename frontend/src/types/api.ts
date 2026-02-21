@@ -89,6 +89,7 @@ export type Proof = {
   url: string;
   view_url?: string | null;
   status: string;
+  proficiency_level?: string | null;
   review_note?: string | null;
   metadata?: Record<string, unknown> | null;
   created_at?: string;
