@@ -11,7 +11,20 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user_id
 from app.models.entities import KanbanTask, StudentProfile, UserPathway
-from app.services.ai import _call_llm, _safe_json, ai_is_configured
+from app.services.ai import _call_llm, ai_is_configured
+import json as _json
+
+def _safe_json(text: str) -> dict | None:
+    if not text:
+        return None
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return _json.loads(text[start:end])
+    except Exception:
+        pass
+    return None
 
 router = APIRouter(prefix="/kanban")
 
