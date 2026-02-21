@@ -47,7 +47,7 @@ def _get_checklist_items(db: Session, selection: UserPathway) -> list[ChecklistI
 
 
 def compute_mri_components(db: Session, user_id: str) -> dict[str, Any]:
-    """Compute MRI score with three components."""
+    """Compute MRI score with three components including proficiency weighting."""
     selection, profile = _get_user_pathway_and_profile(db, user_id)
     if not selection:
         return {
@@ -58,38 +58,74 @@ def compute_mri_components(db: Session, user_id: str) -> dict[str, Any]:
             "recommendations": ["Complete your pathway setup to get your MRI score"],
             "band": "Not Started",
             "formula": "MRI = (Federal Standards × 0.40) + (Market Demand × 0.30) + (Evidence Density × 0.30)",
+            "proficiency_breakdown": {},
         }
 
     items = _get_checklist_items(db, selection)
     proofs = db.query(Proof).filter(Proof.user_id == user_id).all()
 
-    verified_ids = {str(p.checklist_item_id) for p in proofs if p.status == "verified"}
-    all_item_ids = {str(i.id) for i in items}
+    # Build proof lookup by checklist_item_id → best proof
+    best_proof: dict[str, Proof] = {}
+    for p in proofs:
+        item_key = str(p.checklist_item_id)
+        if p.status == "verified":
+            # AI-verified cert takes priority; otherwise keep highest proficiency
+            existing = best_proof.get(item_key)
+            if not existing or existing.status != "verified":
+                best_proof[item_key] = p
+            elif _get_prof_mult(p) > _get_prof_mult(existing):
+                best_proof[item_key] = p
+
     non_negotiables = [i for i in items if i.tier == "non_negotiable"]
     strong_signals = [i for i in items if i.tier == "strong_signal"]
+    all_item_ids = {str(i.id) for i in items}
 
-    # Federal Standards Score: based on non-negotiable + strong_signal completion (O*NET weight)
+    # ─── Federal Standards Score ───────────────────────────────
+    # Weighted by proficiency. Non-negotiables need AI-verified cert for full credit.
     n_total = max(len(non_negotiables), 1)
     s_total = max(len(strong_signals), 1)
-    n_done = sum(1 for i in non_negotiables if str(i.id) in verified_ids)
-    s_done = sum(1 for i in strong_signals if str(i.id) in verified_ids)
-    federal_score = min(100.0, round((0.7 * (n_done / n_total) + 0.3 * (s_done / s_total)) * 100, 1))
 
-    # Market Demand Score: ratio of verified skills to all checklist items (proxy for Adzuna signal)
+    n_weighted = sum(
+        _item_credit(str(i.id), best_proof, i.tier) for i in non_negotiables
+    )
+    s_weighted = sum(
+        _item_credit(str(i.id), best_proof, i.tier) for i in strong_signals
+    )
+    federal_score = min(100.0, round(
+        (0.70 * (n_weighted / n_total) + 0.30 * (s_weighted / s_total)) * 100, 1
+    ))
+
+    # ─── Market Demand Score ───────────────────────────────────
+    # Ratio of proficiency-weighted completions to total items
     total_items = max(len(items), 1)
-    total_verified = len(verified_ids.intersection(all_item_ids))
-    market_score = min(100.0, round((total_verified / total_items) * 100, 1))
+    total_weighted = sum(
+        _item_credit(str(i.id), best_proof, i.tier) for i in items
+    )
+    market_score = min(100.0, round((total_weighted / total_items) * 100, 1))
 
-    # Evidence Density Score: diversity of proof types and recency
-    proof_types = {p.proof_type for p in proofs if p.status == "verified"}
+    # ─── Evidence Density Score ────────────────────────────────
+    # Diversity of proof types + recency + GitHub bonus + proficiency mix
+    verified_proofs = [p for p in proofs if p.status == "verified"]
+    proof_types = {p.proof_type for p in verified_proofs}
     type_diversity = min(len(proof_types), 5) / 5
-    recent_proofs = [
-        p for p in proofs
-        if p.status == "verified" and p.created_at
-    ]
-    recency_score = 1.0 if recent_proofs else 0.0
-    github_bonus = 0.2 if (profile and profile.github_username) else 0.0
-    evidence_score = min(100.0, round((type_diversity * 0.6 + recency_score * 0.2 + github_bonus) * 100, 1))
+
+    # Proficiency quality score: average proficiency of verified proofs
+    if verified_proofs:
+        avg_prof = sum(_get_prof_mult(p) for p in verified_proofs) / len(verified_proofs)
+    else:
+        avg_prof = 0.0
+
+    # AI-verified certs give bonus
+    ai_cert_count = sum(
+        1 for p in verified_proofs
+        if p.proof_type in ("cert_upload", "certificate") or "cert" in (p.proof_type or "")
+    )
+    ai_cert_bonus = min(ai_cert_count * 0.05, 0.20)  # up to 20% bonus from certs
+
+    github_bonus = 0.15 if (profile and profile.github_username) else 0.0
+    evidence_score = min(100.0, round(
+        (type_diversity * 0.35 + avg_prof * 0.35 + ai_cert_bonus * 0.15 + github_bonus * 0.15) * 100, 1
+    ))
 
     mri_score = round(
         MRI_WEIGHTS["federal_standards"] * federal_score +
@@ -98,23 +134,32 @@ def compute_mri_components(db: Session, user_id: str) -> dict[str, Any]:
         1,
     )
 
-    # Top gaps
-    missing_items = [i for i in items if str(i.id) not in verified_ids]
+    # Top gaps (prioritize non-negotiables)
+    missing_items = [i for i in items if str(i.id) not in best_proof]
     missing_items.sort(key=lambda i: (0 if i.tier == "non_negotiable" else 1 if i.tier == "strong_signal" else 2))
     gaps = [i.title for i in missing_items[:5]]
 
     # Actionable recommendations
     recommendations = []
     if federal_score < 60:
-        recommendations.append("Complete more non-negotiable checklist requirements to boost your Federal Standards score")
+        recommendations.append("Complete non-negotiable requirements and aim for Professional proficiency to boost your Federal Standards score")
     if market_score < 50:
-        recommendations.append("Add more verified proofs to improve your Market Demand alignment")
+        recommendations.append("Add more verified proofs with higher proficiency levels to improve Market Demand alignment")
     if evidence_score < 50:
-        recommendations.append("Diversify your proof types (certifications, projects, deployments) to increase Evidence Density")
+        recommendations.append("Upload AI-verified certificates for non-negotiable items — they give a 15% bonus to Evidence Density")
+    if not any("cert" in (p.proof_type or "") for p in verified_proofs):
+        recommendations.append("Submit at least one AI-verified certificate to unlock certificate bonuses in your MRI score")
     if not (profile and profile.github_username):
-        recommendations.append("Add your GitHub username to unlock Engineering Signal scoring")
+        recommendations.append("Add your GitHub username to unlock Engineering Signal scoring (+15 to Evidence Density)")
     if not recommendations:
-        recommendations.append("You're performing well! Keep adding proofs to maintain your edge")
+        recommendations.append("Strong profile! Level up remaining items to Professional proficiency for maximum MRI score")
+
+    # Proficiency breakdown
+    prof_counts: dict[str, int] = {"beginner": 0, "intermediate": 0, "professional": 0}
+    for p in best_proof.values():
+        lvl = (p.proficiency_level or "intermediate").lower()
+        if lvl in prof_counts:
+            prof_counts[lvl] += 1
 
     if mri_score >= 85:
         band = "Market Ready"
@@ -137,7 +182,26 @@ def compute_mri_components(db: Session, user_id: str) -> dict[str, Any]:
         "recommendations": recommendations[:4],
         "band": band,
         "formula": "MRI = (Federal Standards × 0.40) + (Market Demand × 0.30) + (Evidence Density × 0.30)",
+        "proficiency_breakdown": prof_counts,
+        "ai_verified_certs": ai_cert_count,
     }
+
+
+def _get_prof_mult(proof: Proof) -> float:
+    return PROFICIENCY_MULTIPLIERS.get((proof.proficiency_level or "intermediate").lower(), 0.75)
+
+
+def _item_credit(item_id: str, best_proof: dict, tier: str) -> float:
+    """Credit for a checklist item: 0 if not verified, else proficiency mult × AI bonus for non-negotiables."""
+    proof = best_proof.get(item_id)
+    if not proof:
+        return 0.0
+    mult = _get_prof_mult(proof)
+    # Non-negotiable AI-verified certs get a 15% bonus
+    is_cert = "cert" in (proof.proof_type or "").lower()
+    if tier == "non_negotiable" and is_cert:
+        mult = min(mult * AI_VERIFIED_BONUS, 1.0)
+    return mult
 
 
 @router.get("/mri")
