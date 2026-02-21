@@ -122,6 +122,7 @@ def register_proof(
         checklist_item_id=payload.checklist_item_id,
         proof_type=payload.proof_type,
         url=payload.url if certificate_mode else (payload.url or "self_attested://yes"),
+        proficiency_level=payload.proficiency_level or "intermediate",
         metadata_json=payload.metadata,
     )
     if not certificate_mode:
