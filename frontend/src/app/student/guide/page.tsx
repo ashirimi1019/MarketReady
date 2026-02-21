@@ -2,629 +2,571 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend } from "@/lib/api";
-import { getErrorMessage, getRetryAfterSeconds, isRateLimited } from "@/lib/errors";
+import { getErrorMessage } from "@/lib/errors";
 import { useSession } from "@/lib/session";
-import type { ChecklistItem, AiGuide } from "@/types/api";
+import type { AICareerOrchestrator, MarketStressTest, RepoProofChecker, StudentProfile } from "@/types/api";
 
-type AiIfIWereYouOut = {
-  summary: string;
-  fastest_path: string[];
-  realistic_next_moves: string[];
-  avoid_now: string[];
-  recommended_certificates: string[];
-  uncertainty?: string | null;
-};
-
-type AiEmotionalResetOut = {
+type TipOfDay = {
   title: string;
   story: string;
   reframe: string;
   action_plan: string[];
-  uncertainty?: string | null;
 };
 
-type AiRebuildPlanOut = {
-  summary: string;
-  day_0_30: string[];
-  day_31_60: string[];
-  day_61_90: string[];
-  weekly_targets: string[];
-  portfolio_targets: string[];
-  recommended_certificates: string[];
-  uncertainty?: string | null;
-};
+function trendLabel(value: string): string {
+  if (value === "heating_up") return "Heating Up";
+  if (value === "cooling_down") return "Cooling Down";
+  return "Neutral";
+}
 
-type AiCollegeGapOut = {
-  job_description_playbook: string[];
-  reverse_engineer_skills: string[];
-  project_that_recruiters_care: string[];
-  networking_strategy: string[];
-  uncertainty?: string | null;
-};
+function mriTheme(score: number) {
+  if (score >= 75) {
+    return {
+      label: "Market Ready",
+      tone: "text-emerald-400",
+      border: "border-emerald-500/40",
+      glow: "shadow-[0_0_25px_rgba(16,185,129,0.25)]",
+      ringHex: "#10b981",
+      bg: "from-zinc-900 via-zinc-950 to-emerald-950/40",
+    };
+  }
+  if (score >= 55) {
+    return {
+      label: "Watchlist",
+      tone: "text-amber-400",
+      border: "border-amber-500/40",
+      glow: "shadow-[0_0_25px_rgba(245,158,11,0.2)]",
+      ringHex: "#f59e0b",
+      bg: "from-zinc-900 via-zinc-950 to-amber-950/30",
+    };
+  }
+  return {
+    label: "High Risk",
+    tone: "text-red-400",
+    border: "border-red-500/40",
+    glow: "shadow-[0_0_25px_rgba(239,68,68,0.25)]",
+    ringHex: "#ef4444",
+    bg: "from-zinc-900 via-zinc-950 to-red-950/35",
+  };
+}
+
+async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`,
+      { headers: { Accept: "application/json" } }
+    );
+    if (!response.ok) return null;
+    const payload = (await response.json()) as {
+      address?: { city?: string; town?: string; village?: string; state?: string; country?: string };
+    };
+    const city = payload.address?.city || payload.address?.town || payload.address?.village;
+    const state = payload.address?.state;
+    const country = payload.address?.country;
+    if (city && state) return `${city}, ${state}`;
+    if (state && country) return `${state}, ${country}`;
+    if (country) return country;
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function StudentAiGuidePage() {
   const { username, isLoggedIn } = useSession();
   const headers = useMemo(() => ({ "X-User-Id": username }), [username]);
-  const [question, setQuestion] = useState("");
-  const [guide, setGuide] = useState<AiGuide | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [checklistMap, setChecklistMap] = useState<Record<string, ChecklistItem>>(
-    {}
-  );
-  const [feedbackComment, setFeedbackComment] = useState("");
-  const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
-  const [ifGpa, setIfGpa] = useState("");
-  const [ifInternship, setIfInternship] = useState("");
-  const [ifIndustry, setIfIndustry] = useState("");
-  const [ifLocation, setIfLocation] = useState("");
-  const [ifResult, setIfResult] = useState<AiIfIWereYouOut | null>(null);
-  const [ifLoading, setIfLoading] = useState(false);
-  const [ifError, setIfError] = useState<string | null>(null);
-  const [emotionalContext, setEmotionalContext] = useState("");
-  const [emotionalResult, setEmotionalResult] = useState<AiEmotionalResetOut | null>(null);
-  const [emotionalLoading, setEmotionalLoading] = useState(false);
-  const [emotionalError, setEmotionalError] = useState<string | null>(null);
-  const [planSkills, setPlanSkills] = useState("");
-  const [planTargetJob, setPlanTargetJob] = useState("");
-  const [planLocation, setPlanLocation] = useState("");
-  const [planHours, setPlanHours] = useState("8");
-  const [planResult, setPlanResult] = useState<AiRebuildPlanOut | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-  const [planError, setPlanError] = useState<string | null>(null);
-  const [gapTargetJob, setGapTargetJob] = useState("");
-  const [gapCurrentSkills, setGapCurrentSkills] = useState("");
-  const [gapResult, setGapResult] = useState<AiCollegeGapOut | null>(null);
-  const [gapLoading, setGapLoading] = useState(false);
-  const [gapError, setGapError] = useState<string | null>(null);
+
+  const [targetJob, setTargetJob] = useState("software engineer");
+  const [location, setLocation] = useState("united states");
+  const [availabilityHours, setAvailabilityHours] = useState("20");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [smartSyncNotes, setSmartSyncNotes] = useState<string[]>([]);
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+
+  const [stressResult, setStressResult] = useState<MarketStressTest | null>(null);
+  const [stressLoading, setStressLoading] = useState(false);
+  const [stressError, setStressError] = useState<string | null>(null);
+
+  const [repoResult, setRepoResult] = useState<RepoProofChecker | null>(null);
+  const [repoLoading, setRepoLoading] = useState(false);
+  const [repoError, setRepoError] = useState<string | null>(null);
+
+  const [orchestratorResult, setOrchestratorResult] = useState<AICareerOrchestrator | null>(null);
+  const [orchestratorLoading, setOrchestratorLoading] = useState(false);
+  const [orchestratorError, setOrchestratorError] = useState<string | null>(null);
+  const [pivotLoading, setPivotLoading] = useState(false);
+  const [pivotError, setPivotError] = useState<string | null>(null);
+
+  const [futureYear, setFutureYear] = useState(2026);
+  const [tip, setTip] = useState<TipOfDay | null>(null);
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    apiGet<ChecklistItem[]>("/user/checklist", headers)
-      .then((items) => {
-        const map: Record<string, ChecklistItem> = {};
-        items.forEach((item) => {
-          map[item.id] = item;
-        });
-        setChecklistMap(map);
+
+    let cancelled = false;
+    const notes: string[] = [];
+
+    apiGet<StudentProfile>("/user/profile", headers)
+      .then((profilePayload) => {
+        if (cancelled) return;
+        setProfile(profilePayload);
+        if (profilePayload.state) {
+          setLocation(profilePayload.state);
+          notes.push(`Location from profile: ${profilePayload.state}`);
+        }
+        if (profilePayload.github_username) {
+          setRepoUrl(`https://github.com/${profilePayload.github_username}`);
+          notes.push(`GitHub synced: @${profilePayload.github_username}`);
+          fetch(`https://api.github.com/users/${profilePayload.github_username}`)
+            .then(async (response) => {
+              if (!response.ok) return null;
+              const payload = (await response.json()) as { location?: string | null; bio?: string | null };
+              return payload;
+            })
+            .then((githubProfile) => {
+              if (!githubProfile || cancelled) return;
+              if (githubProfile.location && !profilePayload.state) {
+                setLocation(githubProfile.location);
+                setSmartSyncNotes((prev) => Array.from(new Set([...prev, `Location from GitHub: ${githubProfile.location}`])));
+              }
+              const bio = (githubProfile.bio || "").toLowerCase();
+              if (bio.includes("backend")) setTargetJob("backend engineer");
+              else if (bio.includes("security")) setTargetJob("cybersecurity analyst");
+              else if (bio.includes("data")) setTargetJob("data engineer");
+            })
+            .catch(() => null);
+        }
+        if (profilePayload.resume_filename) {
+          notes.push(`Resume synced: ${profilePayload.resume_filename}`);
+        }
+        setSmartSyncNotes((prev) => Array.from(new Set([...prev, ...notes])));
       })
-      .catch(() => setChecklistMap({}));
+      .catch(() => null);
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          if (cancelled) return;
+          const resolved = await reverseGeocode(position.coords.latitude, position.coords.longitude);
+          if (resolved) {
+            setLocation(resolved);
+            setSmartSyncNotes((prev) => Array.from(new Set([...prev, `Location from browser: ${resolved}`])));
+          }
+        },
+        () => null,
+        { timeout: 3000 }
+      );
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [headers, isLoggedIn]);
 
-  const loadGuide = async (prompt?: string) => {
-    if (!isLoggedIn) {
-      setError("Please log in to use the OpenAI guide.");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiSend<AiGuide>("/user/ai/guide", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ question: prompt?.trim() || null }),
-      });
-      setGuide(data);
-    } catch (err) {
-      if (isRateLimited(err)) {
-        const retry = getRetryAfterSeconds(err);
-        setError(
-          retry
-            ? `Rate limit reached. Try again in about ${retry} seconds.`
-            : "Rate limit reached. Please wait and try again."
-        );
-      } else {
-        setError(getErrorMessage(err) || "Failed to load OpenAI guidance.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (isLoggedIn) return;
-    setGuide(null);
-    setError(null);
-    setLoading(false);
-  }, [isLoggedIn]);
+    if (!isLoggedIn) return;
+    apiSend<TipOfDay>("/user/ai/emotional-reset", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        story_context: "Give one short practical motivation reset for this week.",
+      }),
+    })
+      .then((data) => setTip(data))
+      .catch(() => setTip(null));
+  }, [headers, isLoggedIn]);
 
-  const citedItems = guide?.cited_checklist_item_ids
-    ?.map((id) => checklistMap[id])
-    .filter(Boolean) as ChecklistItem[] | undefined;
-
-  const submitFeedback = async (helpful: boolean) => {
-    if (!isLoggedIn || !guide) return;
-    setFeedbackStatus(null);
-    try {
-      const response = await apiSend<{ ok: boolean; message: string }>(
-        "/user/ai/guide/feedback",
-        {
-          method: "POST",
-          headers: {
-            ...headers,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            helpful,
-            comment: feedbackComment || null,
-            context_item_ids: guide.cited_checklist_item_ids ?? [],
-          }),
-        }
-      );
-      setFeedbackStatus(response.message);
-      setFeedbackComment("");
-    } catch (err) {
-      setFeedbackStatus(err instanceof Error ? err.message : "Could not save feedback.");
-    }
-  };
-
-  const runIfIWereYou = async () => {
+  const runStressTest = async () => {
     if (!isLoggedIn) {
-      setIfError("Please log in to use this service.");
+      setStressError("Please log in to run MRI.");
       return;
     }
-    setIfLoading(true);
-    setIfError(null);
+    setStressLoading(true);
+    setStressError(null);
     try {
-      const parsedGpa = ifGpa.trim() ? Number(ifGpa) : null;
-      const data = await apiSend<AiIfIWereYouOut>("/user/ai/if-i-were-you", {
+      const data = await apiSend<MarketStressTest>("/user/ai/market-stress-test", {
         method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          gpa: parsedGpa !== null && Number.isFinite(parsedGpa) ? parsedGpa : null,
-          internship_history: ifInternship.trim() || null,
-          industry: ifIndustry.trim() || null,
-          location: ifLocation.trim() || null,
+          target_job: targetJob.trim() || "software engineer",
+          location: location.trim() || "united states",
         }),
       });
-      setIfResult(data);
+      setStressResult(data);
     } catch (err) {
-      setIfError(getErrorMessage(err) || "Service unavailable.");
+      setStressError(getErrorMessage(err) || "Market stress test unavailable.");
+      setStressResult(null);
     } finally {
-      setIfLoading(false);
+      setStressLoading(false);
     }
   };
 
-  const runEmotionalReset = async () => {
+  const runRepoAudit = async () => {
     if (!isLoggedIn) {
-      setEmotionalError("Please log in to use this service.");
+      setRepoError("Please log in to verify by GitHub.");
       return;
     }
-    setEmotionalLoading(true);
-    setEmotionalError(null);
+    setRepoLoading(true);
+    setRepoError(null);
     try {
-      const data = await apiSend<AiEmotionalResetOut>("/user/ai/emotional-reset", {
+      const data = await apiSend<RepoProofChecker>("/user/ai/proof-checker", {
         method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          story_context: emotionalContext.trim() || null,
+          target_job: targetJob.trim() || "software engineer",
+          location: location.trim() || "united states",
+          repo_url: repoUrl.trim(),
         }),
       });
-      setEmotionalResult(data);
+      setRepoResult(data);
     } catch (err) {
-      setEmotionalError(getErrorMessage(err) || "Service unavailable.");
+      setRepoError(getErrorMessage(err) || "GitHub proof auditor unavailable.");
+      setRepoResult(null);
     } finally {
-      setEmotionalLoading(false);
+      setRepoLoading(false);
     }
   };
 
-  const runRebuildPlan = async () => {
+  const runOrchestrator = async (pivotRequested = false) => {
     if (!isLoggedIn) {
-      setPlanError("Please log in to use this service.");
+      setOrchestratorError("Please log in to run the mission planner.");
       return;
     }
-    if (!planSkills.trim() || !planTargetJob.trim()) {
-      setPlanError("Current skills and target job are required.");
-      return;
-    }
-    setPlanLoading(true);
-    setPlanError(null);
+    pivotRequested ? setPivotLoading(true) : setOrchestratorLoading(true);
+    setOrchestratorError(null);
+    setPivotError(null);
+
     try {
-      const parsedHours = Number(planHours);
-      const data = await apiSend<AiRebuildPlanOut>("/user/ai/rebuild-90-day", {
+      const parsedHours = Number(availabilityHours);
+      const payload = await apiSend<AICareerOrchestrator>("/user/ai/orchestrator", {
         method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          current_skills: planSkills.trim(),
-          target_job: planTargetJob.trim(),
-          location: planLocation.trim() || null,
-          hours_per_week: Number.isFinite(parsedHours) ? parsedHours : 8,
+          target_job: targetJob.trim() || "software engineer",
+          location: location.trim() || "united states",
+          availability_hours_per_week: Number.isFinite(parsedHours) ? parsedHours : 20,
+          pivot_requested: pivotRequested,
         }),
       });
-      setPlanResult(data);
+      setOrchestratorResult(payload);
     } catch (err) {
-      setPlanError(getErrorMessage(err) || "Service unavailable.");
+      const message = getErrorMessage(err) || "Mission planner unavailable.";
+      pivotRequested ? setPivotError(message) : setOrchestratorError(message);
+      setOrchestratorResult(null);
     } finally {
-      setPlanLoading(false);
+      pivotRequested ? setPivotLoading(false) : setOrchestratorLoading(false);
     }
   };
 
-  const runCollegeGap = async () => {
-    if (!isLoggedIn) {
-      setGapError("Please log in to use this service.");
-      return;
-    }
-    setGapLoading(true);
-    setGapError(null);
-    try {
-      const data = await apiSend<AiCollegeGapOut>("/user/ai/college-gap-playbook", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          target_job: gapTargetJob.trim() || null,
-          current_skills: gapCurrentSkills.trim() || null,
-        }),
-      });
-      setGapResult(data);
-    } catch (err) {
-      setGapError(getErrorMessage(err) || "Service unavailable.");
-    } finally {
-      setGapLoading(false);
-    }
-  };
+  const mriScore = stressResult?.score ?? 0;
+  const mri = mriTheme(mriScore);
+  const gaugePct = Math.max(0, Math.min(100, mriScore));
+  const simulation = stressResult?.simulation_2027 ?? null;
+  const projectedScore = futureYear === 2027 && simulation ? simulation.projected_score : mriScore;
+  const projectedDelta = futureYear === 2027 && simulation ? simulation.delta : 0;
+  const projectedRisk = futureYear === 2027 && simulation ? simulation.risk_level : "baseline";
+
+  const mission = (orchestratorResult?.mission_dashboard as Record<string, unknown>) || {};
+  const day0 = Array.isArray(mission.day_0_30) ? (mission.day_0_30 as string[]) : [];
+  const day31 = Array.isArray(mission.day_31_60) ? (mission.day_31_60 as string[]) : [];
+  const day61 = Array.isArray(mission.day_61_90) ? (mission.day_61_90 as string[]) : [];
+  const weekly = Array.isArray(mission.weekly_checkboxes) ? (mission.weekly_checkboxes as string[]) : [];
 
   return (
-    <section className="panel">
+    <section className="panel space-y-6">
       <h2 className="text-3xl font-semibold">AI Career Services</h2>
-      <p className="mt-2 text-[color:var(--muted)]">
-        This tab combines targeted guidance, practical recovery support, and structured execution planning to help you move faster toward the right role.
+      <p className="text-[color:var(--muted)]">
+        Data-driven workflow: MRI score + GitHub validation + market-weighted mission planning.
       </p>
-      <div className="mt-4 rounded-xl border border-[color:var(--border)] p-4 text-sm text-[color:var(--muted)]">
-        <p>What you can do here:</p>
-        <ul className="mt-2 grid gap-1">
-          <li>Get direct guidance from your current checklist and profile context.</li>
-          <li>Use If I Were You Mode for realistic next moves based on your background.</li>
-          <li>Use Graduated But Feel Behind for emotional reset plus practical actions.</li>
-          <li>Generate a 90-Day Rebuild Plan with weekly execution targets.</li>
-          <li>Use College Didn&apos;t Teach Me This for job-description and networking playbooks.</li>
-        </ul>
-      </div>
+
       {!isLoggedIn && (
-        <p className="mt-4 text-sm text-[color:var(--accent-2)]">
-          Please log in to use AI Career Services.
+        <p className="text-sm text-[color:var(--accent-2)]">
+          Please log in to use Market Stress Test, GitHub Proof Auditor, and the agentic mission workflow.
         </p>
       )}
-      <div className="mt-6 grid gap-3">
-        <label className="text-sm text-[color:var(--muted)]">
-          Ask a specific question (optional)
+
+      <div className="rounded-xl border border-[color:var(--border)] p-5">
+        <h3 className="text-xl font-semibold">Smart Sync</h3>
+        <p className="mt-1 text-sm text-[color:var(--muted)]">
+          Defaults are pulled from profile, browser location, and GitHub profile when available.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <input
-            className="mt-2 w-full rounded-lg border border-[color:var(--border)] p-3"
-            placeholder="e.g., What should I prioritize this year?"
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            disabled={!isLoggedIn || loading}
+            className="rounded-lg border border-[color:var(--border)] p-3"
+            value={targetJob}
+            onChange={(e) => setTargetJob(e.target.value)}
+            placeholder="Target job"
           />
-        </label>
-        <div className="flex flex-wrap gap-3">
-          <button className="cta" onClick={() => loadGuide(question)} disabled={!isLoggedIn || loading}>
-            {loading ? "Generating..." : "Generate Guidance"}
-          </button>
-          <button
-            className="cta cta-secondary"
-            onClick={() => {
-              setQuestion("");
-              loadGuide();
-            }}
-            disabled={!isLoggedIn || loading}
-          >
-            Refresh Without Question
-          </button>
+          <input
+            className="rounded-lg border border-[color:var(--border)] p-3"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Location"
+          />
+          <input
+            className="rounded-lg border border-[color:var(--border)] p-3"
+            type="number"
+            min={1}
+            max={80}
+            value={availabilityHours}
+            onChange={(e) => setAvailabilityHours(e.target.value)}
+            placeholder="Hours/week"
+          />
         </div>
-        {!guide && !loading && !error && isLoggedIn && (
-          <p className="text-sm text-[color:var(--muted)]">
-            Guidance is generated only after you click a button.
-          </p>
+        {smartSyncNotes.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {smartSyncNotes.map((note) => (
+              <span key={note} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+                {note}
+              </span>
+            ))}
+          </div>
         )}
-        {error && (
-          <p className="text-sm text-[color:var(--accent-2)]">{error}</p>
-        )}
+        {profile?.university && <p className="mt-3 text-xs text-[color:var(--muted)]">Education context: {profile.university}</p>}
       </div>
 
-      {guide && (
-        <div className="mt-8 grid gap-6">
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Decision</h3>
-            <p className="mt-2 text-[color:var(--muted)]">
-              {guide.decision || "No decision provided."}
-            </p>
+      <div className="rounded-xl border border-[color:var(--border)] p-5">
+        <h3 className="text-xl font-semibold">Market Stress Test (MRI)</h3>
+        <p className="mt-1 text-sm text-[color:var(--muted)]">
+          We do not guess. MRI weights federal skill standards against live local demand and verified proof density.
+        </p>
+        <div className="mt-4">
+          <button className="cta" onClick={runStressTest} disabled={!isLoggedIn || stressLoading}>
+            {stressLoading ? "Running..." : "Run Market Stress Test"}
+          </button>
+        </div>
+
+        {stressError && (
+          <div className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+            {stressError}
           </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Recommendations</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.recommendations?.length ? (
-                guide.recommendations.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No recommendations yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Certificates To Stand Out</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.recommended_certificates?.length ? (
-                guide.recommended_certificates.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No certificate recommendations yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Materials To Master</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.materials_to_master?.length ? (
-                guide.materials_to_master.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No material guidance yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Top Market Skills</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.market_top_skills?.length ? (
-                guide.market_top_skills.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No market skills available yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Market Alignment</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.market_alignment?.length ? (
-                guide.market_alignment.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No market-alignment notes yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Priority Focus Areas</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.priority_focus_areas?.length ? (
-                guide.priority_focus_areas.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No focus areas yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Weekly Execution Plan</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.weekly_plan?.length ? (
-                guide.weekly_plan.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No weekly plan yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Resume Improvement Areas</h3>
-            {guide.resume_detected ? (
-              <div className="mt-3 grid gap-4">
-                <div>
-                  <p className="text-sm font-medium text-white">Strengths Detected</p>
-                  <ul className="mt-2 grid gap-2 text-[color:var(--muted)]">
-                    {guide.resume_strengths?.length ? (
-                      guide.resume_strengths.map((item) => <li key={item}>{item}</li>)
-                    ) : (
-                      <li>No specific strengths detected yet.</li>
-                    )}
-                  </ul>
+        )}
+
+        {stressResult && (
+          <div className="mt-4 space-y-4">
+            <div className={`rounded-2xl border bg-gradient-to-br p-5 ${mri.border} ${mri.glow} ${mri.bg}`}>
+              <div className="grid gap-6 md:grid-cols-[220px_1fr]">
+                <div className="mx-auto flex w-full max-w-[220px] flex-col items-center">
+                  <div
+                    className="relative h-44 w-44 rounded-full"
+                    style={{
+                      background: `conic-gradient(${mri.ringHex} ${gaugePct}%, rgba(255,255,255,0.08) 0)`,
+                    }}
+                  >
+                    <div className="absolute inset-[10px] rounded-full bg-black/85" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-400">MRI</p>
+                      <p className={`text-5xl font-black ${mri.tone}`}>{stressResult.score.toFixed(0)}</p>
+                      <p className="text-xs text-zinc-500">out of 100</p>
+                    </div>
+                  </div>
+                  <p className={`mt-3 text-sm font-semibold ${mri.tone}`}>{mri.label}</p>
                 </div>
+
                 <div>
-                  <p className="text-sm font-medium text-white">What To Improve</p>
-                  <ul className="mt-2 grid gap-2 text-[color:var(--muted)]">
-                    {guide.resume_improvements?.length ? (
-                      guide.resume_improvements.map((item) => <li key={item}>{item}</li>)
-                    ) : (
-                      <li>Your resume is already aligned with current checklist needs.</li>
-                    )}
-                  </ul>
+                  <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">Secret Sauce Formula</p>
+                  <p className="mt-1 text-sm text-zinc-300">
+                    {stressResult.mri_formula || "MRI = 0.40 * Skill Match + 0.30 * Market Demand + 0.30 * Proof Density"}
+                  </p>
+                  <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
+                    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">Skill Match</p>
+                      <p className="mt-1 text-lg font-semibold text-white">{stressResult.components.skill_overlap_score?.toFixed(1) ?? "0"}</p>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">Market Demand</p>
+                      <p className="mt-1 text-lg font-semibold text-white">{stressResult.components.market_trend_score?.toFixed(1) ?? "0"}</p>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">Proof Density</p>
+                      <p className="mt-1 text-lg font-semibold text-white">{stressResult.components.evidence_verification_score?.toFixed(1) ?? "0"}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm text-[color:var(--muted)] md:grid-cols-2">
+                    <p>Trend: {trendLabel(stressResult.vacancy_trend_label)}</p>
+                    <p>Job Stability (2027): {stressResult.job_stability_score_2027.toFixed(1)}</p>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <p className="mt-2 text-[color:var(--muted)]">
-                Upload your resume in the Profile page to get automatic resume-specific improvement feedback.
+              <p className="mt-3 text-xs text-[color:var(--muted)]">
+                Data freshness: {stressResult.data_freshness} | Providers: adzuna={stressResult.provider_status.adzuna},
+                careeronestop={stressResult.provider_status.careeronestop}
               </p>
-            )}
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Next Actions</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.next_actions?.length ? (
-                guide.next_actions.map((item) => <li key={item}>{item}</li>)
-              ) : (
-                <li>No next actions yet.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Suggested Proof Types</h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {guide.suggested_proof_types?.length ? (
-                guide.suggested_proof_types.map((type) => (
-                  <span key={type} className="chip">
-                    {type}
+            </div>
+
+            <div className="rounded-lg border border-[color:var(--border)] p-4">
+              <p className="text-sm font-semibold text-white">Market Volatility Index (Live Adzuna)</p>
+              <div className="mt-3 flex h-20 items-end gap-1">
+                {stressResult.market_volatility_points.slice(-12).map((point, idx) => (
+                  <div
+                    key={`${point.x}-${idx}`}
+                    className="w-3 rounded-t bg-[color:var(--accent-2)]/70"
+                    style={{ height: `${Math.max(8, Math.min(88, point.y / 2))}%` }}
+                  />
+                ))}
+              </div>
+              <label className="mt-4 block text-sm text-[color:var(--muted)]">
+                2027 AI Automation Shift ({futureYear})
+                <input className="mt-2 w-full" type="range" min={2026} max={2027} value={futureYear} onChange={(e) => setFutureYear(Number(e.target.value))} />
+              </label>
+              <p className="mt-2 text-sm text-[color:var(--muted)]">
+                Projected MRI: <span className="font-semibold text-white">{projectedScore.toFixed(1)}</span>
+                {futureYear === 2027 && (
+                  <span className={`ml-3 font-semibold ${projectedDelta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    Delta {projectedDelta >= 0 ? "+" : ""}
+                    {projectedDelta.toFixed(1)} | Risk {projectedRisk.toUpperCase()}
                   </span>
-                ))
-              ) : (
-                <span className="text-[color:var(--muted)]">
-                  No proof types suggested.
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Cited Checklist Items</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {citedItems?.length ? (
-                citedItems.map((item) => (
-                  <li key={item.id}>
-                    {item.title} ({item.status})
-                  </li>
-                ))
-              ) : (
-                <li>No citations provided.</li>
-              )}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Evidence + Confidence</h3>
-            <ul className="mt-3 grid gap-2 text-[color:var(--muted)]">
-              {guide.evidence_snippets?.length ? (
-                guide.evidence_snippets.map((snippet) => <li key={snippet}>{snippet}</li>)
-              ) : (
-                <li>No evidence snippets yet.</li>
-              )}
-            </ul>
-            <div className="mt-4 grid gap-2 text-sm text-[color:var(--muted)]">
-              {Object.entries(guide.confidence_by_item || {}).slice(0, 10).map(([id, score]) => (
-                <div key={id}>
-                  {checklistMap[id]?.title ?? id}: {(score * 100).toFixed(0)}%
+                )}
+              </p>
+              {futureYear === 2027 && simulation && (
+                <div className="mt-2 grid gap-2 text-xs text-[color:var(--muted)] md:grid-cols-2">
+                  <p>At risk skills: {simulation.at_risk_skills.join(", ") || "none detected"}</p>
+                  <p>Growth skills: {simulation.growth_skills.join(", ") || "none detected"}</p>
                 </div>
-              ))}
+              )}
             </div>
-          </div>
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Feedback Loop</h3>
-            <p className="mt-2 text-[color:var(--muted)]">
-              Tell the system whether this guidance helped. Feedback is stored for model improvement.
-            </p>
-            <textarea
-              className="mt-3 w-full rounded-lg border border-[color:var(--border)] p-3 text-sm"
-              placeholder="Optional comment"
-              value={feedbackComment}
-              onChange={(event) => setFeedbackComment(event.target.value)}
-            />
-            <div className="mt-3 flex flex-wrap gap-3">
-              <button className="cta cta-secondary" onClick={() => submitFeedback(true)}>
-                Helpful
-              </button>
-              <button className="cta cta-secondary" onClick={() => submitFeedback(false)}>
-                Not helpful
-              </button>
-            </div>
-            {feedbackStatus && (
-              <p className="mt-3 text-sm text-[color:var(--muted)]">{feedbackStatus}</p>
+
+            {stressResult.citations && stressResult.citations.length > 0 && (
+              <div className="rounded-lg border border-[color:var(--border)] p-4">
+                <p className="text-sm font-semibold text-white">Confidence Citations</p>
+                <ul className="mt-2 grid gap-2 text-sm text-[color:var(--muted)]">
+                  {stressResult.citations.map((citation, idx) => (
+                    <li key={`${citation.source}-${idx}`} className="rounded-md border border-white/10 bg-black/20 p-2">
+                      <p className="font-medium text-white">{citation.source}</p>
+                      <p className="text-xs">{citation.signal}: {String(citation.value)}</p>
+                      {citation.note && <p className="text-xs">{citation.note}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
-          {guide.uncertainty && (
-            <div className="rounded-xl border border-[color:var(--border)] p-5">
-              <h3 className="text-xl font-semibold">Uncertainty</h3>
-              <p className="mt-2 text-[color:var(--muted)]">{guide.uncertainty}</p>
-            </div>
-          )}
-          <div className="rounded-xl border border-[color:var(--border)] p-5">
-            <h3 className="text-xl font-semibold">Explanation</h3>
-            <p className="mt-2 text-[color:var(--muted)]">{guide.explanation}</p>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="mt-8 grid gap-6">
-        <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-xl font-semibold">If I Were You Mode</h3>
-          <p className="mt-2 text-[color:var(--muted)]">
-            Realistic next moves based on GPA, internship history, industry, and location.
-          </p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <input className="rounded-lg border border-[color:var(--border)] p-3" type="number" min={0} max={4} step="0.01" placeholder="GPA (optional)" value={ifGpa} onChange={(e) => setIfGpa(e.target.value)} />
-            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Target industry" value={ifIndustry} onChange={(e) => setIfIndustry(e.target.value)} />
-            <textarea className="rounded-lg border border-[color:var(--border)] p-3 md:col-span-2" placeholder="Internship history" value={ifInternship} onChange={(e) => setIfInternship(e.target.value)} />
-            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Location" value={ifLocation} onChange={(e) => setIfLocation(e.target.value)} />
-          </div>
-          <div className="mt-3">
-            <button className="cta" onClick={runIfIWereYou} disabled={!isLoggedIn || ifLoading}>{ifLoading ? "Generating..." : "Generate My Path"}</button>
-          </div>
-          {ifError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{ifError}</p>}
-          {ifResult && (
-            <div className="mt-4 grid gap-3 text-[color:var(--muted)]">
-              <p><span className="font-semibold text-white">Summary:</span> {ifResult.summary}</p>
-              <p className="font-semibold text-white">Fastest Path</p>
-              <ul className="grid gap-1">{ifResult.fastest_path.map((item) => <li key={item}>{item}</li>)}</ul>
-              <p className="font-semibold text-white">Realistic Next Moves</p>
-              <ul className="grid gap-1">{ifResult.realistic_next_moves.map((item) => <li key={item}>{item}</li>)}</ul>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-xl font-semibold">Graduated But Feel Behind?</h3>
-          <p className="mt-2 text-[color:var(--muted)]">Get structured emotional reset plus action-oriented direction.</p>
-          <textarea className="mt-4 w-full rounded-lg border border-[color:var(--border)] p-3" placeholder="Share your current situation (optional)" value={emotionalContext} onChange={(e) => setEmotionalContext(e.target.value)} />
-          <div className="mt-3">
-            <button className="cta" onClick={runEmotionalReset} disabled={!isLoggedIn || emotionalLoading}>{emotionalLoading ? "Generating..." : "Generate Reset Plan"}</button>
-          </div>
-          {emotionalError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{emotionalError}</p>}
-          {emotionalResult && (
-            <div className="mt-4 grid gap-2 text-[color:var(--muted)]">
-              <p className="font-semibold text-white">{emotionalResult.title}</p>
-              <p>{emotionalResult.story}</p>
-              <p><span className="font-semibold text-white">Reframe:</span> {emotionalResult.reframe}</p>
-              <ul className="grid gap-1">{emotionalResult.action_plan.map((item) => <li key={item}>{item}</li>)}</ul>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-xl font-semibold">90-Day Rebuild Plan Generator</h3>
-          <p className="mt-2 text-[color:var(--muted)]">Create a practical 90-day plan from your current skills and target role.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <textarea className="rounded-lg border border-[color:var(--border)] p-3 md:col-span-2" placeholder="Current skills" value={planSkills} onChange={(e) => setPlanSkills(e.target.value)} />
-            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Target job" value={planTargetJob} onChange={(e) => setPlanTargetJob(e.target.value)} />
-            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Location" value={planLocation} onChange={(e) => setPlanLocation(e.target.value)} />
-            <input className="rounded-lg border border-[color:var(--border)] p-3" type="number" min={1} max={80} placeholder="Hours per week" value={planHours} onChange={(e) => setPlanHours(e.target.value)} />
-          </div>
-          <div className="mt-3">
-            <button className="cta" onClick={runRebuildPlan} disabled={!isLoggedIn || planLoading}>{planLoading ? "Building..." : "Generate 90-Day Plan"}</button>
-          </div>
-          {planError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{planError}</p>}
-          {planResult && (
-            <div className="mt-4 grid gap-2 text-[color:var(--muted)]">
-              <p className="font-semibold text-white">Summary</p>
-              <p>{planResult.summary}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-[color:var(--border)] p-5">
-          <h3 className="text-xl font-semibold">College Didn&apos;t Teach Me This</h3>
-          <p className="mt-2 text-[color:var(--muted)]">Generate practical playbooks for job descriptions, project strategy, and networking.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Target job" value={gapTargetJob} onChange={(e) => setGapTargetJob(e.target.value)} />
-            <input className="rounded-lg border border-[color:var(--border)] p-3" placeholder="Current skills" value={gapCurrentSkills} onChange={(e) => setGapCurrentSkills(e.target.value)} />
-          </div>
-          <div className="mt-3">
-            <button className="cta" onClick={runCollegeGap} disabled={!isLoggedIn || gapLoading}>{gapLoading ? "Generating..." : "Generate Playbook"}</button>
-          </div>
-          {gapError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{gapError}</p>}
-          {gapResult && (
-            <div className="mt-4 grid gap-2 text-[color:var(--muted)]">
-              <p className="font-semibold text-white">How To Read Job Descriptions</p>
-              <ul className="grid gap-1">{gapResult.job_description_playbook.map((item) => <li key={item}>{item}</li>)}</ul>
-            </div>
-          )}
-        </div>
-
-        <p className="text-sm text-[color:var(--muted)]">
-          All services in this tab are powered by OpenAI.
+      <div className="rounded-xl border border-[color:var(--border)] p-5">
+        <h3 className="text-xl font-semibold">GitHub Proof Auditor</h3>
+        <p className="mt-1 text-sm text-[color:var(--muted)]">
+          Validation agent scans your public codebase and marks skills as Verified by Code.
         </p>
+        <div className="mt-4 flex gap-3">
+          <input
+            className="w-full rounded-lg border border-[color:var(--border)] p-3"
+            placeholder="https://github.com/owner or https://github.com/owner/repo"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+          />
+          <button className="cta" onClick={runRepoAudit} disabled={!isLoggedIn || repoLoading}>
+            {repoLoading ? "Verifying..." : "Verify with GitHub"}
+          </button>
+        </div>
+        {repoError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{repoError}</p>}
+        {repoResult && (
+          <div className="mt-4 grid gap-4 rounded-lg border border-[color:var(--border)] p-4">
+            <p className="text-sm text-[color:var(--muted)]">
+              Confidence: <span className="font-semibold text-white">{repoResult.repo_confidence.toFixed(1)}%</span>
+            </p>
+            <div>
+              <p className="text-sm font-semibold text-white">Verified by code</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {repoResult.verified_by_repo_skills.length > 0 ? (
+                  repoResult.verified_by_repo_skills.map((skill) => (
+                    <span key={skill} className="rounded-full border border-green-500/50 bg-green-500/10 px-3 py-1 text-xs text-green-300">
+                      Verified: {skill}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-[color:var(--muted)]">No verified skills found.</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Skill gap closing targets</p>
+              <ul className="mt-2 grid gap-1 text-sm text-[color:var(--muted)]">
+                {repoResult.skills_required_but_missing.slice(0, 8).map((skill) => (
+                  <li key={skill}>- {skill}</li>
+                ))}
+              </ul>
+            </div>
+            <p className="text-xs text-[color:var(--muted)]">
+              Repos checked: {repoResult.repos_checked.join(", ") || "none"} | Languages detected: {repoResult.languages_detected.join(", ") || "none"}
+            </p>
+            <p className="text-xs text-[color:var(--muted)]">Files scanned: {repoResult.files_checked.join(", ") || "none"}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-[color:var(--border)] p-5">
+        <h3 className="text-xl font-semibold">90-Day Agentic Mission Dashboard</h3>
+        <p className="mt-1 text-sm text-[color:var(--muted)]">
+          Not generic advice. A schedule tied to your missing skills, local market demand, and available hours.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button className="cta" onClick={() => runOrchestrator(false)} disabled={!isLoggedIn || orchestratorLoading}>
+            {orchestratorLoading ? "Building mission..." : "Generate 90-Day Mission"}
+          </button>
+          <button className="cta cta-secondary" onClick={() => runOrchestrator(true)} disabled={!isLoggedIn || pivotLoading}>
+            {pivotLoading ? "Pivoting..." : "Live Pivot"}
+          </button>
+        </div>
+        {orchestratorError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{orchestratorError}</p>}
+        {pivotError && <p className="mt-2 text-sm text-[color:var(--accent-2)]">{pivotError}</p>}
+        {orchestratorResult && (
+          <div className="mt-4 grid gap-4">
+            <div className="rounded-lg border border-[color:var(--border)] p-4">
+              <p className="text-sm font-semibold text-white">Market Alert</p>
+              <p className="mt-2 text-sm text-[color:var(--muted)]">{orchestratorResult.market_alert}</p>
+              {orchestratorResult.pivot_reason && (
+                <p className="mt-2 text-xs text-[color:var(--muted)]">
+                  {orchestratorResult.pivot_reason}
+                  {orchestratorResult.pivot_target_role ? ` | Focus role: ${orchestratorResult.pivot_target_role}` : ""}
+                </p>
+              )}
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border border-[color:var(--border)] p-3">
+                <p className="font-semibold text-white">Day 0-30</p>
+                <ul className="mt-2 grid gap-1 text-sm text-[color:var(--muted)]">
+                  {day0.map((item) => (
+                    <li key={item}>- {item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-[color:var(--border)] p-3">
+                <p className="font-semibold text-white">Day 31-60</p>
+                <ul className="mt-2 grid gap-1 text-sm text-[color:var(--muted)]">
+                  {day31.map((item) => (
+                    <li key={item}>- {item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-[color:var(--border)] p-3">
+                <p className="font-semibold text-white">Day 61-90</p>
+                <ul className="mt-2 grid gap-1 text-sm text-[color:var(--muted)]">
+                  {day61.map((item) => (
+                    <li key={item}>- {item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="rounded-lg border border-[color:var(--border)] p-4">
+              <p className="text-sm font-semibold text-white">Weekly checkboxes</p>
+              <div className="mt-2 grid gap-2">
+                {weekly.map((item) => (
+                  <label key={item} className="flex items-start gap-2 text-sm text-[color:var(--muted)]">
+                    <input type="checkbox" className="mt-0.5" />
+                    <span>{item}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-[color:var(--border)] bg-black/30 p-4 text-sm text-[color:var(--muted)]">
+        <p className="font-semibold text-white">Tip of the Day</p>
+        {tip ? <p className="mt-1">{tip.reframe}</p> : <p className="mt-1">Consistent verified output beats occasional motivation spikes.</p>}
       </div>
     </section>
   );

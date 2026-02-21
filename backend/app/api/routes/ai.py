@@ -19,6 +19,12 @@ from app.schemas.api import (
     AiRebuildPlanOut,
     AiCollegeGapIn,
     AiCollegeGapOut,
+    MarketStressTestIn,
+    MarketStressTestOut,
+    RepoProofCheckerIn,
+    RepoProofCheckerOut,
+    AICareerOrchestratorIn,
+    AICareerOrchestratorOut,
     AiInterviewSessionIn,
     AiInterviewSessionOut,
     AiInterviewResponseIn,
@@ -49,6 +55,8 @@ from app.services.career_features import (
     generate_resume_artifact,
     list_resume_artifacts,
 )
+from app.services.market_stress import compute_market_stress_test, repo_proof_checker
+from app.services.ai_orchestrator import run_ai_career_orchestrator
 
 router = APIRouter()
 
@@ -163,6 +171,64 @@ def student_ai_college_gap_playbook(
             user_id=user_id,
             target_job=payload.target_job,
             current_skills=payload.current_skills,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/user/ai/market-stress-test", response_model=MarketStressTestOut)
+def student_market_stress_test(
+    payload: MarketStressTestIn,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    ai_rate_limiter.check(f"user:{user_id}:market-stress-test")
+    try:
+        return compute_market_stress_test(
+            db,
+            user_id=user_id,
+            target_job=payload.target_job,
+            location=payload.location,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/user/ai/proof-checker", response_model=RepoProofCheckerOut)
+def student_repo_proof_checker(
+    payload: RepoProofCheckerIn,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    ai_rate_limiter.check(f"user:{user_id}:proof-checker")
+    try:
+        return repo_proof_checker(
+            db,
+            user_id=user_id,
+            target_job=payload.target_job,
+            location=payload.location,
+            repo_url=payload.repo_url,
+            proof_id=str(payload.proof_id) if payload.proof_id else None,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/user/ai/orchestrator", response_model=AICareerOrchestratorOut)
+def student_ai_orchestrator(
+    payload: AICareerOrchestratorIn,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    ai_rate_limiter.check(f"user:{user_id}:ai-orchestrator")
+    try:
+        return run_ai_career_orchestrator(
+            db,
+            user_id=user_id,
+            target_job=payload.target_job,
+            location=payload.location,
+            availability_hours_per_week=payload.availability_hours_per_week,
+            pivot_requested=payload.pivot_requested,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

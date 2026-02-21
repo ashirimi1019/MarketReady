@@ -316,3 +316,63 @@ export type AiResumeArtifact = {
   structured?: Record<string, unknown> | null;
   created_at: string;
 };
+
+export type MarketStressTest = {
+  score: number;
+  mri_formula?: string | null;
+  mri_formula_version?: string | null;
+  computed_at?: string | null;
+  components: Record<string, number>;
+  weights: Record<string, number>;
+  required_skills_count: number;
+  matched_skills_count: number;
+  missing_skills: string[];
+  salary_average?: number | null;
+  vacancy_trend_label: string;
+  job_stability_score_2027: number;
+  data_freshness: string;
+  provider_status: Record<string, string>;
+  market_volatility_points: Array<{ x: number; y: number }>;
+  evidence_counts: Record<string, number>;
+  simulation_2027?: {
+    projected_score: number;
+    delta: number;
+    risk_level: string;
+    at_risk_skills: string[];
+    growth_skills: string[];
+  } | null;
+  citations?: Array<{
+    source: string;
+    signal: string;
+    value: string | number;
+    note?: string;
+  }>;
+};
+
+export type RepoProofChecker = {
+  repo_url: string;
+  required_skills_count: number;
+  matched_skills: string[];
+  verified_by_repo_skills: string[];
+  skills_required_but_missing: string[];
+  match_count: number;
+  repo_confidence: number;
+  files_checked: string[];
+  repos_checked: string[];
+  languages_detected: string[];
+  vacancy_trend_label: string;
+};
+
+export type AICareerOrchestrator = {
+  stress_test: Record<string, unknown>;
+  auditor: Record<string, unknown>;
+  planner: Record<string, unknown>;
+  strategist: Record<string, unknown>;
+  mission_dashboard: Record<string, unknown>;
+  market_alert: string;
+  top_missing_skills: string[];
+  pivot_applied?: boolean;
+  pivot_reason?: string | null;
+  pivot_target_role?: string | null;
+  pivot_delta?: number | null;
+};

@@ -319,6 +319,74 @@ class AiCollegeGapOut(BaseModel):
     uncertainty: Optional[str] = None
 
 
+class MarketStressTestIn(BaseModel):
+    target_job: str
+    location: str
+
+
+class MarketStressTestOut(BaseModel):
+    score: float
+    mri_formula: Optional[str] = None
+    mri_formula_version: Optional[str] = None
+    computed_at: Optional[str] = None
+    components: dict[str, float] = Field(default_factory=dict)
+    weights: dict[str, float] = Field(default_factory=dict)
+    required_skills_count: int = 0
+    matched_skills_count: int = 0
+    missing_skills: List[str] = Field(default_factory=list)
+    salary_average: Optional[float] = None
+    vacancy_trend_label: str = "neutral"
+    job_stability_score_2027: float = 0.0
+    data_freshness: str = "unknown"
+    provider_status: dict[str, str] = Field(default_factory=dict)
+    market_volatility_points: List[dict[str, float]] = Field(default_factory=list)
+    evidence_counts: dict[str, int] = Field(default_factory=dict)
+    simulation_2027: dict[str, Any] = Field(default_factory=dict)
+    citations: List[dict[str, Any]] = Field(default_factory=list)
+
+
+class RepoProofCheckerIn(BaseModel):
+    target_job: str
+    location: str
+    repo_url: str
+    proof_id: Optional[UUID] = None
+
+
+class RepoProofCheckerOut(BaseModel):
+    repo_url: str
+    required_skills_count: int = 0
+    matched_skills: List[str] = Field(default_factory=list)
+    verified_by_repo_skills: List[str] = Field(default_factory=list)
+    skills_required_but_missing: List[str] = Field(default_factory=list)
+    match_count: int = 0
+    repo_confidence: float = 0.0
+    files_checked: List[str] = Field(default_factory=list)
+    repos_checked: List[str] = Field(default_factory=list)
+    languages_detected: List[str] = Field(default_factory=list)
+    vacancy_trend_label: str = "neutral"
+
+
+class AICareerOrchestratorIn(BaseModel):
+    target_job: str
+    location: str
+    availability_hours_per_week: int = Field(default=20, ge=1, le=80)
+    pivot_requested: bool = False
+
+
+class AICareerOrchestratorOut(BaseModel):
+    stress_test: dict[str, Any]
+    auditor: dict[str, Any]
+    planner: dict[str, Any]
+    strategist: dict[str, Any]
+    mission_dashboard: dict[str, Any] = Field(default_factory=dict)
+    market_alert: str = ""
+    top_missing_skills: List[str] = Field(default_factory=list)
+    pivot_applied: bool = False
+    pivot_reason: Optional[str] = None
+    pivot_target_role: Optional[str] = None
+    pivot_delta: Optional[float] = None
+
+
 class AiEvidenceMapOut(BaseModel):
     matched_count: int
     mode: str
