@@ -13,6 +13,13 @@ const STRATEGIC_TIPS = [
   "Use local-demand signals to choose projects, not random tutorial paths.",
 ];
 
+const MRI_FORMULA_LABEL = "MRI = (0.40 × Skill Match) + (0.30 × Live Demand) + (0.30 × Proof Density)";
+const STORAGE_KEYS = {
+  orchestrator: "mri_demo_orchestrator_v1",
+  weeklyChecks: "mri_demo_weekly_checks_v1",
+  kanban: "mri_demo_kanban_v1",
+} as const;
+
 type KanbanLane = "backlog" | "in_progress" | "done";
 
 type MissionTask = {
@@ -57,6 +64,14 @@ function mriTheme(score: number) {
     ringHex: "#ef4444",
     bg: "from-zinc-900 via-zinc-950 to-red-950/35",
   };
+}
+
+function formatSnapshotFreshness(timestamp?: string | null, ageMinutes?: number | null): string {
+  if (!timestamp) return "Snapshot timestamp unavailable";
+  if (typeof ageMinutes === "number") {
+    return `Snapshot: ${timestamp} (${ageMinutes.toFixed(0)} min old)`;
+  }
+  return `Snapshot: ${timestamp}`;
 }
 
 async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
@@ -177,6 +192,56 @@ export default function StudentAiGuidePage() {
   useEffect(() => {
     setTipSeed(Math.floor(Math.random() * STRATEGIC_TIPS.length));
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const rawOrchestrator = window.localStorage.getItem(STORAGE_KEYS.orchestrator);
+      if (rawOrchestrator) {
+        const parsed = JSON.parse(rawOrchestrator) as AICareerOrchestrator;
+        setOrchestratorResult(parsed);
+      }
+    } catch {
+      // ignore parse errors
+    }
+
+    try {
+      const rawWeekly = window.localStorage.getItem(STORAGE_KEYS.weeklyChecks);
+      if (rawWeekly) {
+        const parsed = JSON.parse(rawWeekly) as Record<string, boolean>;
+        setWeeklyChecks(parsed);
+      }
+    } catch {
+      // ignore parse errors
+    }
+
+    try {
+      const rawKanban = window.localStorage.getItem(STORAGE_KEYS.kanban);
+      if (rawKanban) {
+        const parsed = JSON.parse(rawKanban) as MissionTask[];
+        if (Array.isArray(parsed)) setKanbanTasks(parsed);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (orchestratorResult) {
+      window.localStorage.setItem(STORAGE_KEYS.orchestrator, JSON.stringify(orchestratorResult));
+    }
+  }, [orchestratorResult]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEYS.weeklyChecks, JSON.stringify(weeklyChecks));
+  }, [weeklyChecks]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEYS.kanban, JSON.stringify(kanbanTasks));
+  }, [kanbanTasks]);
 
   const runStressTest = async () => {
     if (!isLoggedIn) {
@@ -468,7 +533,20 @@ export default function StudentAiGuidePage() {
       </div>
 
       <div className="rounded-xl border border-[color:var(--border)] p-5">
-        <h3 className="text-xl font-semibold">Market-Ready Index (MRI) Stress Test</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xl font-semibold">Market-Ready Index (MRI) Stress Test</h3>
+          {stressResult?.source_mode && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-xs ${
+                stressResult.source_mode === "snapshot_fallback"
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+              }`}
+            >
+              Source: {stressResult.source_mode === "snapshot_fallback" ? "snapshot" : "live"}
+            </span>
+          )}
+        </div>
         <p className="mt-1 text-sm text-[color:var(--muted)]">
           We do not guess. MRI weights federal skill standards against live local demand and verified proof density.
         </p>
@@ -507,9 +585,10 @@ export default function StudentAiGuidePage() {
 
                 <div>
                   <p className="text-sm uppercase tracking-[0.2em] text-zinc-400">Secret Sauce Formula</p>
-                  <p className="mt-1 text-sm text-zinc-300">
-                    {stressResult.mri_formula || "MRI = 0.40 * Skill Match + 0.30 * Market Demand + 0.30 * Proof Density"}
-                  </p>
+                  <p className="mt-1 text-sm text-zinc-300">{MRI_FORMULA_LABEL}</p>
+                  {stressResult.mri_formula && stressResult.mri_formula !== MRI_FORMULA_LABEL && (
+                    <p className="text-xs text-zinc-500">Backend formula string: {stressResult.mri_formula}</p>
+                  )}
                   <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
                     <div className="rounded-lg border border-white/10 bg-black/30 p-3">
                       <p className="text-xs uppercase tracking-wider text-zinc-500">Skill Match</p>
@@ -557,9 +636,14 @@ export default function StudentAiGuidePage() {
                 </div>
               </div>
               <p className="mt-3 text-xs text-[color:var(--muted)]">
-                Data freshness: {stressResult.data_freshness} | Providers: adzuna={stressResult.provider_status.adzuna},
-                careeronestop={stressResult.provider_status.careeronestop}
+                Data freshness: {stressResult.data_freshness} | Source: {stressResult.source_mode} | Providers:
+                adzuna={stressResult.provider_status.adzuna}, careeronestop={stressResult.provider_status.careeronestop}
               </p>
+              {stressResult.source_mode === "snapshot_fallback" && (
+                <p className="mt-1 text-xs text-amber-300">
+                  {formatSnapshotFreshness(stressResult.snapshot_timestamp, stressResult.snapshot_age_minutes)}
+                </p>
+              )}
             </div>
 
             <div className="rounded-lg border border-[color:var(--border)] p-4">
@@ -626,7 +710,20 @@ export default function StudentAiGuidePage() {
       </div>
 
       <div className="rounded-xl border border-[color:var(--border)] p-5">
-        <h3 className="text-xl font-semibold">GitHub Proof Auditor</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xl font-semibold">GitHub Proof Auditor</h3>
+          {repoResult?.source_mode && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-xs ${
+                repoResult.source_mode === "snapshot_fallback"
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+              }`}
+            >
+              Source: {repoResult.source_mode === "snapshot_fallback" ? "snapshot" : "live"}
+            </span>
+          )}
+        </div>
         <p className="mt-1 text-sm text-[color:var(--muted)]">
           Validation agent scans your public codebase and marks skills as Verified by Code.
         </p>
@@ -687,6 +784,11 @@ export default function StudentAiGuidePage() {
               Repos checked: {repoResult.repos_checked.join(", ") || "none"} | Languages detected: {repoResult.languages_detected.join(", ") || "none"}
             </p>
             <p className="text-xs text-[color:var(--muted)]">Files scanned: {repoResult.files_checked.join(", ") || "none"}</p>
+            {repoResult.source_mode === "snapshot_fallback" && (
+              <p className="text-xs text-amber-300">
+                {formatSnapshotFreshness(repoResult.snapshot_timestamp, repoResult.snapshot_age_minutes)}
+              </p>
+            )}
           </div>
         )}
       </div>

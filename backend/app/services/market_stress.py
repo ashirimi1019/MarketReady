@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.models.entities import (
     ChecklistItem,
     ChecklistVersion,
+    MarketRawIngestion,
     Proof,
     Skill,
     StudentProfile,
@@ -20,6 +21,12 @@ from app.models.entities import (
 
 MRI_FORMULA = "MRI = (0.40 * Skill Match) + (0.30 * Market Demand) + (0.30 * Proof Density)"
 MRI_FORMULA_VERSION = "2026.1"
+SNAPSHOT_SOURCE_STRESS = "mri:stress:v1"
+SNAPSHOT_SOURCE_SKILLS = "mri:skills:v1"
+SNAPSHOT_SOURCE_ADZUNA = "mri:adzuna:v1"
+SNAPSHOT_TTL_SKILLS_HOURS = 168
+SNAPSHOT_TTL_ADZUNA_HOURS = 24
+SNAPSHOT_TTL_STRESS_HOURS = 24
 
 
 @dataclass
@@ -86,6 +93,159 @@ HIGH_RESILIENCE_TOKENS = (
     "cloud",
     "distributed systems",
 )
+
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _clamp_score(value: float) -> float:
+    return max(0.0, min(100.0, float(value)))
+
+
+def _snapshot_key(target_job: str, location: str) -> str:
+    job = _normalize_skill(target_job or "software engineer")
+    where = _normalize_skill(location or "united states")
+    return f"{job}|{where}"
+
+
+def _format_snapshot_timestamp(value: datetime | None) -> str | None:
+    if not value:
+        return None
+    return value.replace(microsecond=0).isoformat() + "Z"
+
+
+def _parse_snapshot_timestamp(value: Any, fallback: datetime | None) -> datetime | None:
+    text = str(value or "").strip()
+    if text:
+        cleaned = text[:-1] if text.endswith("Z") else text
+        try:
+            return datetime.fromisoformat(cleaned)
+        except Exception:
+            pass
+    return fallback
+
+
+def _snapshot_age_minutes(timestamp: datetime | None) -> float | None:
+    if not timestamp:
+        return None
+    return round(max(0.0, (_utcnow() - timestamp).total_seconds() / 60.0), 1)
+
+
+def _save_snapshot(db: Session, source: str, key: str, payload: dict[str, Any]) -> dict[str, Any]:
+    stamp = _utcnow()
+    row = MarketRawIngestion(
+        source=source,
+        metadata_json={
+            "snapshot_key": key,
+            "snapshot_timestamp": _format_snapshot_timestamp(stamp),
+            "payload": payload,
+        },
+    )
+    db.add(row)
+    db.commit()
+    return {
+        "snapshot_timestamp": _format_snapshot_timestamp(stamp),
+        "snapshot_age_minutes": 0.0,
+    }
+
+
+def _load_snapshot(
+    db: Session,
+    source: str,
+    key: str,
+    max_age_hours: int,
+) -> dict[str, Any] | None:
+    max_age_minutes = max(1, int(max_age_hours) * 60)
+    rows = (
+        db.query(MarketRawIngestion)
+        .filter(MarketRawIngestion.source == source)
+        .order_by(MarketRawIngestion.fetched_at.desc())
+        .limit(250)
+        .all()
+    )
+    for row in rows:
+        meta = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+        if str(meta.get("snapshot_key") or "") != key:
+            continue
+        payload = meta.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        timestamp = _parse_snapshot_timestamp(meta.get("snapshot_timestamp"), row.fetched_at)
+        age = _snapshot_age_minutes(timestamp)
+        if age is None or age > max_age_minutes:
+            continue
+        return {
+            "payload": payload,
+            "snapshot_timestamp": _format_snapshot_timestamp(timestamp),
+            "snapshot_age_minutes": age,
+        }
+    return None
+
+
+def _benchmark_to_payload(benchmark: MarketBenchmarks) -> dict[str, Any]:
+    return {
+        "salary_avg": benchmark.salary_avg,
+        "vacancy_index": benchmark.vacancy_index,
+        "trend_label": benchmark.trend_label,
+        "volatility_points": benchmark.volatility_points,
+        "history_points_found": benchmark.history_points_found,
+        "salary_points_found": benchmark.salary_points_found,
+        "salary_percentile_local": benchmark.salary_percentile_local,
+        "top_hiring_companies": benchmark.top_hiring_companies,
+        "vacancy_growth_percent": benchmark.vacancy_growth_percent,
+        "volatility_score": benchmark.volatility_score,
+    }
+
+
+def _benchmark_from_payload(payload: dict[str, Any]) -> MarketBenchmarks:
+    return MarketBenchmarks(
+        salary_avg=payload.get("salary_avg"),
+        vacancy_index=float(payload.get("vacancy_index") or 0.0),
+        trend_label=str(payload.get("trend_label") or "neutral"),
+        volatility_points=payload.get("volatility_points") if isinstance(payload.get("volatility_points"), list) else [],
+        history_points_found=int(payload.get("history_points_found") or 0),
+        salary_points_found=int(payload.get("salary_points_found") or 0),
+        salary_percentile_local=payload.get("salary_percentile_local"),
+        top_hiring_companies=payload.get("top_hiring_companies") if isinstance(payload.get("top_hiring_companies"), list) else [],
+        vacancy_growth_percent=float(payload.get("vacancy_growth_percent") or 0.0),
+        volatility_score=float(payload.get("volatility_score") or 0.0),
+    )
+
+
+def _pick_fallback_snapshot_meta(snapshot_meta: list[dict[str, Any]]) -> tuple[str | None, float | None]:
+    if not snapshot_meta:
+        return None, None
+    selected = max(snapshot_meta, key=lambda item: float(item.get("snapshot_age_minutes") or 0.0))
+    return selected.get("snapshot_timestamp"), selected.get("snapshot_age_minutes")
+
+
+def _snapshot_stress_fallback(
+    db: Session,
+    *,
+    target_job: str,
+    location: str,
+) -> dict[str, Any] | None:
+    key = _snapshot_key(target_job, location)
+    snapshot = _load_snapshot(
+        db,
+        source=SNAPSHOT_SOURCE_STRESS,
+        key=key,
+        max_age_hours=SNAPSHOT_TTL_STRESS_HOURS,
+    )
+    if not snapshot:
+        return None
+
+    payload = dict(snapshot.get("payload") or {})
+    provider_status = payload.get("provider_status") if isinstance(payload.get("provider_status"), dict) else {}
+    provider_status["adzuna"] = "snapshot_fallback"
+    provider_status["careeronestop"] = "snapshot_fallback"
+    payload["provider_status"] = provider_status
+    payload["source_mode"] = "snapshot_fallback"
+    payload["data_freshness"] = "snapshot_fallback"
+    payload["snapshot_timestamp"] = snapshot.get("snapshot_timestamp")
+    payload["snapshot_age_minutes"] = snapshot.get("snapshot_age_minutes")
+    return payload
 
 
 def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
@@ -487,33 +647,94 @@ def compute_market_stress_test(
     location: str,
 ) -> dict[str, Any]:
     provider_status: dict[str, str] = {"adzuna": "ok", "careeronestop": "ok"}
-    data_freshness = "live"
+    snapshot_meta: list[dict[str, Any]] = []
+    key = _snapshot_key(target_job, location)
 
-    required_skills = fetch_careeronestop_skills(target_job)
+    try:
+        required_skills = fetch_careeronestop_skills(target_job)
+        try:
+            _save_snapshot(
+                db,
+                source=SNAPSHOT_SOURCE_SKILLS,
+                key=key,
+                payload={"required_skills": required_skills},
+            )
+        except Exception:
+            db.rollback()
+    except RuntimeError as live_error:
+        skills_snapshot = _load_snapshot(
+            db,
+            source=SNAPSHOT_SOURCE_SKILLS,
+            key=key,
+            max_age_hours=SNAPSHOT_TTL_SKILLS_HOURS,
+        )
+        if not skills_snapshot:
+            stress_snapshot = _snapshot_stress_fallback(db, target_job=target_job, location=location)
+            if stress_snapshot:
+                return stress_snapshot
+            raise live_error
+        payload = skills_snapshot.get("payload") if isinstance(skills_snapshot.get("payload"), dict) else {}
+        required_skills = payload.get("required_skills") if isinstance(payload.get("required_skills"), list) else []
+        if not required_skills:
+            stress_snapshot = _snapshot_stress_fallback(db, target_job=target_job, location=location)
+            if stress_snapshot:
+                return stress_snapshot
+            raise live_error
+        provider_status["careeronestop"] = "snapshot_fallback"
+        snapshot_meta.append(skills_snapshot)
+
+    try:
+        benchmarks = fetch_adzuna_benchmarks(target_job, location)
+        try:
+            _save_snapshot(
+                db,
+                source=SNAPSHOT_SOURCE_ADZUNA,
+                key=key,
+                payload=_benchmark_to_payload(benchmarks),
+            )
+        except Exception:
+            db.rollback()
+    except RuntimeError as live_error:
+        adzuna_snapshot = _load_snapshot(
+            db,
+            source=SNAPSHOT_SOURCE_ADZUNA,
+            key=key,
+            max_age_hours=SNAPSHOT_TTL_ADZUNA_HOURS,
+        )
+        if not adzuna_snapshot:
+            stress_snapshot = _snapshot_stress_fallback(db, target_job=target_job, location=location)
+            if stress_snapshot:
+                return stress_snapshot
+            raise live_error
+        payload = adzuna_snapshot.get("payload") if isinstance(adzuna_snapshot.get("payload"), dict) else {}
+        benchmarks = _benchmark_from_payload(payload)
+        provider_status["adzuna"] = "snapshot_fallback"
+        snapshot_meta.append(adzuna_snapshot)
+
     verified_skill_names = _load_verified_skill_names(db, user_id)
-    benchmarks = fetch_adzuna_benchmarks(target_job, location)
 
     if required_skills:
         overlap_count = len({skill for skill in required_skills if skill in verified_skill_names})
-        skill_overlap_score = (overlap_count / len(required_skills)) * 100.0
+        skill_overlap_score = _clamp_score((overlap_count / len(required_skills)) * 100.0)
     else:
         overlap_count = 0
         skill_overlap_score = 0.0
 
     evidence_score, evidence_counts = _evidence_verification_score(db, user_id)
-    market_trend_score = benchmarks.vacancy_index
+    evidence_score = _clamp_score(evidence_score)
+    market_trend_score = _clamp_score(benchmarks.vacancy_index)
     salary_momentum = 50.0
     if benchmarks.salary_avg and benchmarks.salary_avg > 0:
         salary_momentum = 55.0 if benchmarks.salary_avg >= 60000 else 45.0
 
     slope_component = 100.0 if benchmarks.trend_label == "heating_up" else 20.0 if benchmarks.trend_label == "cooling_down" else 55.0
     job_stability_score_2027 = round(
-        max(0.0, min(100.0, (0.7 * market_trend_score) + (0.3 * ((salary_momentum + slope_component) / 2.0)))),
+        _clamp_score((0.7 * market_trend_score) + (0.3 * ((salary_momentum + slope_component) / 2.0))),
         2,
     )
 
-    final_score = (0.40 * skill_overlap_score) + (0.30 * evidence_score) + (0.30 * market_trend_score)
-    final_score = round(max(0.0, min(100.0, final_score)), 2)
+    final_score = (0.40 * skill_overlap_score) + (0.30 * market_trend_score) + (0.30 * evidence_score)
+    final_score = round(_clamp_score(final_score), 2)
     simulation_2027 = _build_2027_simulation(final_score, required_skills, verified_skill_names, market_trend_score)
 
     missing_skills = [skill for skill in required_skills if skill not in verified_skill_names][:10]
@@ -538,14 +759,17 @@ def compute_market_stress_test(
         },
     ]
 
-    return {
+    source_mode = "snapshot_fallback" if snapshot_meta else "live"
+    snapshot_timestamp, snapshot_age_minutes = _pick_fallback_snapshot_meta(snapshot_meta)
+
+    result = {
         "score": final_score,
         "mri_formula": MRI_FORMULA,
         "mri_formula_version": MRI_FORMULA_VERSION,
-        "computed_at": datetime.utcnow().isoformat() + "Z",
+        "computed_at": _format_snapshot_timestamp(_utcnow()),
         "components": {
             "skill_overlap_score": round(skill_overlap_score, 2),
-            "evidence_verification_score": evidence_score,
+            "evidence_verification_score": round(evidence_score, 2),
             "market_trend_score": round(market_trend_score, 2),
         },
         "weights": {
@@ -560,16 +784,32 @@ def compute_market_stress_test(
         "salary_percentile_local": benchmarks.salary_percentile_local,
         "top_hiring_companies": benchmarks.top_hiring_companies,
         "vacancy_growth_percent": benchmarks.vacancy_growth_percent,
-        "market_volatility_score": benchmarks.volatility_score,
+        "market_volatility_score": _clamp_score(benchmarks.volatility_score),
         "vacancy_trend_label": benchmarks.trend_label,
         "job_stability_score_2027": job_stability_score_2027,
-        "data_freshness": data_freshness,
+        "data_freshness": source_mode,
+        "source_mode": source_mode,
+        "snapshot_timestamp": snapshot_timestamp,
+        "snapshot_age_minutes": snapshot_age_minutes,
         "provider_status": provider_status,
         "market_volatility_points": benchmarks.volatility_points,
         "evidence_counts": evidence_counts,
         "simulation_2027": simulation_2027,
         "citations": citations,
     }
+
+    if source_mode == "live":
+        try:
+            _save_snapshot(
+                db,
+                source=SNAPSHOT_SOURCE_STRESS,
+                key=key,
+                payload=result,
+            )
+        except Exception:
+            db.rollback()
+
+    return result
 
 
 def _repo_owner_name(repo_url: str) -> tuple[str, str] | None:
@@ -695,7 +935,35 @@ def repo_proof_checker(
     repo_url: str,
     proof_id: str | None = None,
 ) -> dict[str, Any]:
-    required_skills = fetch_careeronestop_skills(target_job)
+    key = _snapshot_key(target_job, location)
+    snapshot_meta: list[dict[str, Any]] = []
+
+    try:
+        required_skills = fetch_careeronestop_skills(target_job)
+        try:
+            _save_snapshot(
+                db,
+                source=SNAPSHOT_SOURCE_SKILLS,
+                key=key,
+                payload={"required_skills": required_skills},
+            )
+        except Exception:
+            db.rollback()
+    except RuntimeError as live_error:
+        skills_snapshot = _load_snapshot(
+            db,
+            source=SNAPSHOT_SOURCE_SKILLS,
+            key=key,
+            max_age_hours=SNAPSHOT_TTL_SKILLS_HOURS,
+        )
+        if not skills_snapshot:
+            raise live_error
+        payload = skills_snapshot.get("payload") if isinstance(skills_snapshot.get("payload"), dict) else {}
+        required_skills = payload.get("required_skills") if isinstance(payload.get("required_skills"), list) else []
+        if not required_skills:
+            raise live_error
+        snapshot_meta.append(skills_snapshot)
+
     repo_result = verify_repo_against_skills(repo_url, required_skills)
 
     if proof_id:
@@ -710,7 +978,32 @@ def repo_proof_checker(
             proof.metadata_json = meta
             db.commit()
 
-    benchmark = fetch_adzuna_benchmarks(target_job, location)
+    try:
+        benchmark = fetch_adzuna_benchmarks(target_job, location)
+        try:
+            _save_snapshot(
+                db,
+                source=SNAPSHOT_SOURCE_ADZUNA,
+                key=key,
+                payload=_benchmark_to_payload(benchmark),
+            )
+        except Exception:
+            db.rollback()
+    except RuntimeError as live_error:
+        adzuna_snapshot = _load_snapshot(
+            db,
+            source=SNAPSHOT_SOURCE_ADZUNA,
+            key=key,
+            max_age_hours=SNAPSHOT_TTL_ADZUNA_HOURS,
+        )
+        if not adzuna_snapshot:
+            raise live_error
+        payload = adzuna_snapshot.get("payload") if isinstance(adzuna_snapshot.get("payload"), dict) else {}
+        benchmark = _benchmark_from_payload(payload)
+        snapshot_meta.append(adzuna_snapshot)
+
+    source_mode = "snapshot_fallback" if snapshot_meta else "live"
+    snapshot_timestamp, snapshot_age_minutes = _pick_fallback_snapshot_meta(snapshot_meta)
     missing = [skill for skill in required_skills if skill not in set(repo_result["matched_skills"])]
     return {
         "repo_url": repo_url,
@@ -724,6 +1017,9 @@ def repo_proof_checker(
         "repos_checked": repo_result.get("repos_checked", []),
         "languages_detected": repo_result.get("languages_detected", []),
         "vacancy_trend_label": benchmark.trend_label,
+        "source_mode": source_mode,
+        "snapshot_timestamp": snapshot_timestamp,
+        "snapshot_age_minutes": snapshot_age_minutes,
     }
 
 

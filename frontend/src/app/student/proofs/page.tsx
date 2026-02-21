@@ -16,6 +16,11 @@ export default function StudentProofsPage() {
   const [repoUrl, setRepoUrl] = useState("");
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [lastRepoSource, setLastRepoSource] = useState<{
+    source_mode: "live" | "snapshot_fallback";
+    snapshot_timestamp?: string | null;
+    snapshot_age_minutes?: number | null;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,6 +78,11 @@ export default function StudentProofsPage() {
       setSyncMessage(
         `Repo sync complete: ${result.match_count}/${result.required_skills_count} required skills matched by code.`
       );
+      setLastRepoSource({
+        source_mode: result.source_mode,
+        snapshot_timestamp: result.snapshot_timestamp,
+        snapshot_age_minutes: result.snapshot_age_minutes,
+      });
       const refreshed = await apiGet<Proof[]>("/user/proofs", headers);
       setProofs(refreshed);
     } catch (err) {
@@ -136,6 +146,27 @@ export default function StudentProofsPage() {
             placeholder="Location"
           />
         </div>
+        {lastRepoSource && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full border px-2 py-0.5 text-xs ${
+                lastRepoSource.source_mode === "snapshot_fallback"
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+              }`}
+            >
+              Source: {lastRepoSource.source_mode === "snapshot_fallback" ? "snapshot" : "live"}
+            </span>
+            {lastRepoSource.source_mode === "snapshot_fallback" && lastRepoSource.snapshot_timestamp && (
+              <span className="text-xs text-amber-300">
+                Snapshot: {lastRepoSource.snapshot_timestamp}
+                {typeof lastRepoSource.snapshot_age_minutes === "number"
+                  ? ` (${lastRepoSource.snapshot_age_minutes.toFixed(0)} min old)`
+                  : ""}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="mt-6 grid gap-3">

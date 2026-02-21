@@ -343,6 +343,9 @@ class MarketStressTestOut(BaseModel):
     vacancy_trend_label: str = "neutral"
     job_stability_score_2027: float = 0.0
     data_freshness: str = "unknown"
+    source_mode: str = "live"
+    snapshot_timestamp: Optional[str] = None
+    snapshot_age_minutes: Optional[float] = None
     provider_status: dict[str, str] = Field(default_factory=dict)
     market_volatility_points: List[dict[str, float]] = Field(default_factory=list)
     evidence_counts: dict[str, int] = Field(default_factory=dict)
@@ -369,6 +372,9 @@ class RepoProofCheckerOut(BaseModel):
     repos_checked: List[str] = Field(default_factory=list)
     languages_detected: List[str] = Field(default_factory=list)
     vacancy_trend_label: str = "neutral"
+    source_mode: str = "live"
+    snapshot_timestamp: Optional[str] = None
+    snapshot_age_minutes: Optional[float] = None
 
 
 class AICareerOrchestratorIn(BaseModel):

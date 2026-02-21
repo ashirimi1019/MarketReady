@@ -335,6 +335,9 @@ export type MarketStressTest = {
   vacancy_trend_label: string;
   job_stability_score_2027: number;
   data_freshness: string;
+  source_mode: "live" | "snapshot_fallback";
+  snapshot_timestamp?: string | null;
+  snapshot_age_minutes?: number | null;
   provider_status: Record<string, string>;
   market_volatility_points: Array<{ x: number; y: number }>;
   evidence_counts: Record<string, number>;
@@ -365,6 +368,9 @@ export type RepoProofChecker = {
   repos_checked: string[];
   languages_detected: string[];
   vacancy_trend_label: string;
+  source_mode: "live" | "snapshot_fallback";
+  snapshot_timestamp?: string | null;
+  snapshot_age_minutes?: number | null;
 };
 
 export type AICareerOrchestrator = {
