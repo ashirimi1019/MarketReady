@@ -45,6 +45,7 @@ def _serialize_proof(proof: Proof) -> dict:
         "view_url": resolve_file_view_url(proof.url),
         "status": proof.status,
         "review_note": proof.review_note,
+        "metadata": proof.metadata_json if isinstance(proof.metadata_json, dict) else None,
         "created_at": proof.created_at,
     }
 

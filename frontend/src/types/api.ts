@@ -328,6 +328,10 @@ export type MarketStressTest = {
   matched_skills_count: number;
   missing_skills: string[];
   salary_average?: number | null;
+  salary_percentile_local?: number | null;
+  top_hiring_companies?: Array<{ name: string; open_roles: number }>;
+  vacancy_growth_percent?: number;
+  market_volatility_score?: number;
   vacancy_trend_label: string;
   job_stability_score_2027: number;
   data_freshness: string;

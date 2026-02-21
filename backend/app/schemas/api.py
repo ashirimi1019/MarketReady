@@ -160,6 +160,7 @@ class ProofOut(BaseModel):
     view_url: Optional[str] = None
     status: str
     review_note: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
     created_at: datetime
 
 
@@ -335,6 +336,10 @@ class MarketStressTestOut(BaseModel):
     matched_skills_count: int = 0
     missing_skills: List[str] = Field(default_factory=list)
     salary_average: Optional[float] = None
+    salary_percentile_local: Optional[float] = None
+    top_hiring_companies: List[dict[str, Any]] = Field(default_factory=list)
+    vacancy_growth_percent: float = 0.0
+    market_volatility_score: float = 0.0
     vacancy_trend_label: str = "neutral"
     job_stability_score_2027: float = 0.0
     data_freshness: str = "unknown"

@@ -13,6 +13,15 @@ const STRATEGIC_TIPS = [
   "Use local-demand signals to choose projects, not random tutorial paths.",
 ];
 
+type KanbanLane = "backlog" | "in_progress" | "done";
+
+type MissionTask = {
+  id: string;
+  label: string;
+  phase: string;
+  lane: KanbanLane;
+};
+
 function trendLabel(value: string): string {
   if (value === "heating_up") return "Heating Up";
   if (value === "cooling_down") return "Cooling Down";
@@ -97,6 +106,7 @@ export default function StudentAiGuidePage() {
   const [pivotLoading, setPivotLoading] = useState(false);
   const [pivotError, setPivotError] = useState<string | null>(null);
   const [weeklyChecks, setWeeklyChecks] = useState<Record<string, boolean>>({});
+  const [kanbanTasks, setKanbanTasks] = useState<MissionTask[]>([]);
   const [tipSeed, setTipSeed] = useState(0);
 
   const [futureYear, setFutureYear] = useState(2026);
@@ -283,6 +293,25 @@ export default function StudentAiGuidePage() {
   );
   const weeklyCompleted = weekly.filter((item) => weeklyChecks[item]).length;
   const weeklyProgressPct = weekly.length ? Math.round((weeklyCompleted / weekly.length) * 100) : 0;
+  const kanbanDoneCount = kanbanTasks.filter((task) => task.lane === "done").length;
+  const kanbanProgressPct = kanbanTasks.length ? Math.round((kanbanDoneCount / kanbanTasks.length) * 100) : 0;
+  const salaryFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+      }),
+    []
+  );
+  const volatilityMax = useMemo(
+    () =>
+      Math.max(
+        1,
+        ...(stressResult?.market_volatility_points?.map((point) => point.y).filter((value) => Number.isFinite(value)) || [1])
+      ),
+    [stressResult]
+  );
 
   useEffect(() => {
     setWeeklyChecks((prev) => {
@@ -293,6 +322,37 @@ export default function StudentAiGuidePage() {
       return next;
     });
   }, [weekly]);
+
+  useEffect(() => {
+    const baseTasks: MissionTask[] = [
+      ...day0.map((label, index) => ({
+        id: `d0-${index}-${label}`,
+        label,
+        phase: "Day 0-30",
+        lane: "backlog" as const,
+      })),
+      ...day31.map((label, index) => ({
+        id: `d31-${index}-${label}`,
+        label,
+        phase: "Day 31-60",
+        lane: "backlog" as const,
+      })),
+      ...day61.map((label, index) => ({
+        id: `d61-${index}-${label}`,
+        label,
+        phase: "Day 61-90",
+        lane: "backlog" as const,
+      })),
+    ];
+
+    setKanbanTasks((prev) => {
+      const laneById = new Map(prev.map((task) => [task.id, task.lane]));
+      return baseTasks.map((task) => ({
+        ...task,
+        lane: laneById.get(task.id) || "backlog",
+      }));
+    });
+  }, [day0, day31, day61]);
 
   const strategicTip = useMemo(() => {
     const topMissingSkill = stressResult?.missing_skills?.[0];
@@ -305,6 +365,54 @@ export default function StudentAiGuidePage() {
     }
     return STRATEGIC_TIPS[tipSeed % STRATEGIC_TIPS.length];
   }, [repoResult, stressResult, tipSeed]);
+
+  const exportMissionPlan = () => {
+    if (!orchestratorResult) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const slug = (targetJob.trim() || "career-mission").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const lines = [
+      "Market Ready - 90-Day Agentic Mission",
+      `Generated: ${today}`,
+      `Target Role: ${targetJob}`,
+      `Location: ${location}`,
+      "",
+      `Market Alert: ${orchestratorResult.market_alert || "n/a"}`,
+      "",
+      "Day 0-30",
+      ...day0.map((item) => `- ${item}`),
+      "",
+      "Day 31-60",
+      ...day31.map((item) => `- ${item}`),
+      "",
+      "Day 61-90",
+      ...day61.map((item) => `- ${item}`),
+      "",
+      "Weekly Checklist",
+      ...weekly.map((item) => `- [${weeklyChecks[item] ? "x" : " "}] ${item}`),
+      "",
+      "Interactive Kanban Status",
+      ...kanbanTasks.map((task) => `- [${task.lane}] ${task.label} (${task.phase})`),
+      "",
+      `Progress: ${weeklyCompleted}/${weekly.length || 0} (${weeklyProgressPct}%)`,
+    ];
+
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${slug}-90-day-mission-${today}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const moveKanbanTask = (taskId: string, lane: KanbanLane) => {
+    setKanbanTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? { ...task, lane } : task))
+    );
+  };
 
   return (
     <section className="panel space-y-6">
@@ -360,7 +468,7 @@ export default function StudentAiGuidePage() {
       </div>
 
       <div className="rounded-xl border border-[color:var(--border)] p-5">
-        <h3 className="text-xl font-semibold">Market Stress Test (MRI)</h3>
+        <h3 className="text-xl font-semibold">Market-Ready Index (MRI) Stress Test</h3>
         <p className="mt-1 text-sm text-[color:var(--muted)]">
           We do not guess. MRI weights federal skill standards against live local demand and verified proof density.
         </p>
@@ -420,6 +528,32 @@ export default function StudentAiGuidePage() {
                     <p>Trend: {trendLabel(stressResult.vacancy_trend_label)}</p>
                     <p>Job Stability (2027): {stressResult.job_stability_score_2027.toFixed(1)}</p>
                   </div>
+                  <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">Live Salary Benchmark</p>
+                      <p className="mt-1 text-lg font-semibold text-white">
+                        {typeof stressResult.salary_average === "number"
+                          ? salaryFormatter.format(stressResult.salary_average)
+                          : "Unavailable"}
+                      </p>
+                      <p className="text-xs text-[color:var(--muted)]">
+                        {typeof stressResult.salary_percentile_local === "number"
+                          ? `Local percentile: ${stressResult.salary_percentile_local.toFixed(1)}`
+                          : "Percentile unavailable"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">Skill Volatility Tracker</p>
+                      <p className="mt-1 text-lg font-semibold text-white">
+                        {((stressResult.vacancy_growth_percent ?? 0) >= 0 ? "+" : "") +
+                          (stressResult.vacancy_growth_percent ?? 0).toFixed(1)}
+                        % demand change
+                      </p>
+                      <p className="text-xs text-[color:var(--muted)]">
+                        Volatility score: {(stressResult.market_volatility_score ?? 0).toFixed(1)} / 100
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
               <p className="mt-3 text-xs text-[color:var(--muted)]">
@@ -435,7 +569,7 @@ export default function StudentAiGuidePage() {
                   <div
                     key={`${point.x}-${idx}`}
                     className="w-3 rounded-t bg-[color:var(--accent-2)]/70"
-                    style={{ height: `${Math.max(8, Math.min(88, point.y / 2))}%` }}
+                    style={{ height: `${Math.max(8, Math.min(88, (point.y / volatilityMax) * 88))}%` }}
                   />
                 ))}
               </div>
@@ -459,6 +593,19 @@ export default function StudentAiGuidePage() {
                 </div>
               )}
             </div>
+
+            {Array.isArray(stressResult.top_hiring_companies) && stressResult.top_hiring_companies.length > 0 && (
+              <div className="rounded-lg border border-[color:var(--border)] p-4">
+                <p className="text-sm font-semibold text-white">Local Hero List (Top Hiring Companies)</p>
+                <ul className="mt-2 grid gap-1 text-sm text-[color:var(--muted)]">
+                  {stressResult.top_hiring_companies.slice(0, 5).map((company) => (
+                    <li key={company.name}>
+                      {company.name}: {company.open_roles} open roles in this search window
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {stressResult.citations && stressResult.citations.length > 0 && (
               <div className="rounded-lg border border-[color:var(--border)] p-4">
@@ -554,7 +701,10 @@ export default function StudentAiGuidePage() {
             {orchestratorLoading ? "Building mission..." : "Generate 90-Day Mission"}
           </button>
           <button className="cta cta-secondary" onClick={() => runOrchestrator(true)} disabled={!isLoggedIn || pivotLoading}>
-            {pivotLoading ? "Pivoting..." : "Live Pivot"}
+            {pivotLoading ? "Pivoting..." : "Market Pivot"}
+          </button>
+          <button className="cta cta-secondary" onClick={exportMissionPlan} disabled={!orchestratorResult}>
+            Export 90-Day Mission
           </button>
         </div>
         {orchestratorError && <p className="mt-3 text-sm text-[color:var(--accent-2)]">{orchestratorError}</p>}
@@ -570,6 +720,55 @@ export default function StudentAiGuidePage() {
                   {orchestratorResult.pivot_target_role ? ` | Focus role: ${orchestratorResult.pivot_target_role}` : ""}
                 </p>
               )}
+            </div>
+            <div className="rounded-lg border border-[color:var(--border)] p-4">
+              <p className="text-sm font-semibold text-white">Interactive Mission Kanban</p>
+              <p className="mt-1 text-xs text-[color:var(--muted)]">
+                Agentic execution board tied to market audit output. Progress: {kanbanDoneCount}/{kanbanTasks.length || 0} ({kanbanProgressPct}%)
+              </p>
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-black/40">
+                <div className="h-full bg-emerald-400/80 transition-all" style={{ width: `${kanbanProgressPct}%` }} />
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                {[
+                  { lane: "backlog" as const, title: "Backlog" },
+                  { lane: "in_progress" as const, title: "In Progress" },
+                  { lane: "done" as const, title: "Done" },
+                ].map((column) => (
+                  <div key={column.lane} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                      {column.title} ({kanbanTasks.filter((task) => task.lane === column.lane).length})
+                    </p>
+                    <div className="mt-2 grid gap-2">
+                      {kanbanTasks
+                        .filter((task) => task.lane === column.lane)
+                        .map((task) => (
+                          <div key={task.id} className="rounded-md border border-white/10 bg-black/40 p-2">
+                            <p className="text-xs text-[color:var(--muted)]">{task.phase}</p>
+                            <p className="text-sm text-white">{task.label}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {task.lane !== "backlog" && (
+                                <button className="cta cta-secondary" onClick={() => moveKanbanTask(task.id, "backlog")}>
+                                  Backlog
+                                </button>
+                              )}
+                              {task.lane !== "in_progress" && (
+                                <button className="cta cta-secondary" onClick={() => moveKanbanTask(task.id, "in_progress")}>
+                                  Start
+                                </button>
+                              )}
+                              {task.lane !== "done" && (
+                                <button className="cta cta-secondary" onClick={() => moveKanbanTask(task.id, "done")}>
+                                  Done
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border border-[color:var(--border)] p-3">

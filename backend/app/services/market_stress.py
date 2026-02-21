@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from urllib.parse import quote
@@ -30,6 +30,10 @@ class MarketBenchmarks:
     volatility_points: list[dict[str, float]]
     history_points_found: int = 0
     salary_points_found: int = 0
+    salary_percentile_local: float | None = None
+    top_hiring_companies: list[dict[str, Any]] = field(default_factory=list)
+    vacancy_growth_percent: float = 0.0
+    volatility_score: float = 0.0
 
 
 def _normalize_skill(text: str) -> str:
@@ -99,6 +103,10 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
     volatility_points: list[dict[str, float]] = []
     history_points_found = 0
     salary_points_found = 0
+    salary_percentile_local: float | None = None
+    top_hiring_companies: list[dict[str, Any]] = []
+    vacancy_growth_percent = 0.0
+    volatility_score = 0.0
 
     with httpx.Client(timeout=timeout) as client:
         try:
@@ -135,6 +143,14 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
                 first = max(volatility_points[0]["y"], 1.0)
                 last = volatility_points[-1]["y"]
                 vacancy_index = max(0.0, min(100.0, (last / first) * 50.0))
+                vacancy_growth_percent = ((last - first) / first) * 100.0
+
+                series = [point["y"] for point in volatility_points if point["y"] > 0]
+                if len(series) >= 2:
+                    mean = sum(series) / len(series)
+                    variance = sum((value - mean) ** 2 for value in series) / len(series)
+                    std_dev = variance ** 0.5
+                    volatility_score = max(0.0, min(100.0, (std_dev / max(mean, 1.0)) * 100.0))
         except Exception:
             raise RuntimeError("Adzuna history endpoint failed or timed out.")
 
@@ -154,6 +170,7 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
             if isinstance(buckets, dict) and buckets:
                 weighted_sum = 0.0
                 total = 0.0
+                distribution: list[tuple[float, float]] = []
                 for key, value in buckets.items():
                     try:
                         salary = float(str(key).split("-")[0])
@@ -162,11 +179,56 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
                         continue
                     weighted_sum += salary * cnt
                     total += cnt
+                    distribution.append((salary, cnt))
                 if total > 0:
                     salary_avg = weighted_sum / total
                     salary_points_found = int(total)
+                    if salary_avg is not None and distribution:
+                        cumulative = 0.0
+                        for salary, count in sorted(distribution, key=lambda row: row[0]):
+                            if salary <= salary_avg:
+                                cumulative += count
+                        salary_percentile_local = max(0.0, min(100.0, (cumulative / total) * 100.0))
         except Exception:
             raise RuntimeError("Adzuna histogram endpoint failed or timed out.")
+
+        try:
+            search = client.get(
+                f"{base}/{country}/search/1",
+                params={
+                    "app_id": settings.adzuna_app_id,
+                    "app_key": settings.adzuna_app_key,
+                    "what": what,
+                    "where": where,
+                    "results_per_page": 50,
+                    "sort_by": "date",
+                },
+            )
+            search.raise_for_status()
+            payload = search.json()
+            rows = payload.get("results") if isinstance(payload, dict) else []
+            if isinstance(rows, list):
+                company_counts: dict[str, int] = {}
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    company_block = row.get("company")
+                    company_name = ""
+                    if isinstance(company_block, dict):
+                        company_name = str(company_block.get("display_name") or "").strip()
+                    if not company_name:
+                        continue
+                    company_counts[company_name] = company_counts.get(company_name, 0) + 1
+                top_hiring_companies = [
+                    {"name": name, "open_roles": count}
+                    for name, count in sorted(
+                        company_counts.items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )[:5]
+                ]
+        except Exception:
+            top_hiring_companies = []
 
     trend_label = "heating_up" if vacancy_index >= 60 else "cooling_down" if vacancy_index <= 40 else "neutral"
     if not volatility_points:
@@ -178,6 +240,10 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
         volatility_points=volatility_points,
         history_points_found=history_points_found,
         salary_points_found=salary_points_found,
+        salary_percentile_local=round(salary_percentile_local, 2) if salary_percentile_local is not None else None,
+        top_hiring_companies=top_hiring_companies,
+        vacancy_growth_percent=round(vacancy_growth_percent, 2),
+        volatility_score=round(volatility_score, 2),
     )
 
 
@@ -491,6 +557,10 @@ def compute_market_stress_test(
         "matched_skills_count": overlap_count,
         "missing_skills": missing_skills,
         "salary_average": benchmarks.salary_avg,
+        "salary_percentile_local": benchmarks.salary_percentile_local,
+        "top_hiring_companies": benchmarks.top_hiring_companies,
+        "vacancy_growth_percent": benchmarks.vacancy_growth_percent,
+        "market_volatility_score": benchmarks.volatility_score,
         "vacancy_trend_label": benchmarks.trend_label,
         "job_stability_score_2027": job_stability_score_2027,
         "data_freshness": data_freshness,
