@@ -1,96 +1,199 @@
-# Market Ready — PRD
+# Market Ready — Product Requirements Document
 
-## Problem Statement
-Market Ready is a verification-first career readiness platform that combines federal skill standards, live job market demand, and repo-backed proof signals to answer: "How ready is this user for this role in this location right now, and what is the best next move?"
-
-## Architecture
-- **Frontend**: Next.js (dev mode) — `/app/frontend` — port 3000
-- **Backend**: FastAPI + Python 3.11 — `/app/backend` — port 8001
-- **Database**: PostgreSQL (local, port 5432) — `market_pathways` DB
-- **AI**: OpenAI `gpt-4o-mini` via OpenAI API
-- **Labor Market APIs**: Adzuna, CareerOneStop, O*NET
-
-## Core Requirements (Static)
-
-### 1. MRI Stress Test
-- Formula: `MRI = (0.40 * Skill Match) + (0.30 * Live Demand) + (0.30 * Proof Density)`
-- Components: CareerOneStop skill match, Adzuna live demand, internal proof density
-- Live + fallback mode (snapshot TTL: skills=168h, adzuna=24h, full result=24h)
-- Adzuna recovery engine: exact → role_rewrite → geo_widen → proxy_from_search
-
-### 2. GitHub Proof Auditor
-- Input: GitHub repo URL + target job + location
-- Output: matched skills, verification confidence, files checked, languages detected
-- Integration with CareerOneStop for required skills
-
-### 3. 90-Day Agentic Mission Dashboard
-- Full orchestrator flow: stress test + auditor + planner + strategist
-- Mission kanban with weekly checkboxes
-- Market pivot logic triggered by demand delta
+## Original Problem Statement
+Build a proof-first career readiness platform for students that combines live market signals (GitHub, Adzuna, O*NET) with AI-powered planning to help them answer: "Am I actually hireable?"
 
 ## User Personas
-- College students seeking tech jobs
-- Bootcamp graduates needing credentialing
-- Career switchers validating skills against real demand
+- **Primary:** Computer science students (undergrad/grad) preparing for internships and entry-level roles
+- **Secondary:** Career coaches and recruiters who want to verify student readiness
+- **Tertiary:** University advisors tracking student market alignment
 
-## What's Been Implemented (2026-02-21)
+## Tech Stack
+- **Frontend:** Next.js 14 (App Router), React, TypeScript, Tailwind CSS v4, shadcn/ui
+- **Backend:** FastAPI, Python 3.11, SQLAlchemy ORM
+- **Database:** PostgreSQL (not MongoDB — see note)
+- **Authentication:** JWT-based (X-Auth-Token header)
+- **Deployment:** AWS App Runner (Dockerfiles created)
+- **External APIs:** Adzuna (labor market), CareerOneStop/O*NET (federal standards), OpenAI (AI features), GitHub API (unauthenticated)
 
-### Setup & Infrastructure
-- [x] PostgreSQL installed and configured (port 5432, DB: market_pathways)
-- [x] `server.py` wrapper created (supervisor requires `server:app`)
-- [x] All 11 Alembic migrations run successfully
-- [x] Database seeded with initial data
-- [x] `/app/backend/.env` configured with all API keys (OpenAI, Adzuna, CareerOneStop, O*NET, S3, AWS)
-- [x] `/app/frontend/.env` configured with `NEXT_PUBLIC_API_BASE`
-- [x] Frontend switched to `next dev` mode (no build required)
-- [x] Backend f-string syntax fix for Python 3.11 compatibility
+**NOTE:** This project uses PostgreSQL, NOT MongoDB. The system prompt mentions MongoDB but this project uses PostgreSQL with SQLAlchemy.
 
-### Features Verified (All Passing)
-- [x] Authentication (register/login/session)
-- [x] MRI Stress Test end-to-end (Adzuna + CareerOneStop live data)
-- [x] GitHub Proof Auditor with skill verification
-- [x] 90-Day Mission Dashboard (orchestrator flow)
-- [x] AI Guide, Cert ROI Calculator, Interview Simulator
-- [x] Admin routes, market signals, proposals
-- [x] Health endpoint: `/api/meta/health`
+## Core Architecture
+```
+/app/
+├── backend/
+│   ├── app/
+│   │   ├── api/routes/        # All API routes
+│   │   ├── core/config.py     # Settings, env vars
+│   │   ├── models/entities.py # DB models
+│   │   ├── services/          # Business logic
+│   │   ├── alembic/versions/  # DB migrations
+│   │   └── main.py            # FastAPI app + route registration
+│   └── requirements.txt
+└── frontend/
+    └── src/
+        ├── app/               # Next.js pages
+        ├── components/        # Shared components
+        └── lib/               # API utils, session
+```
+
+## What's Been Implemented
+
+### Phase 1: Initial Setup (Jan 2026)
+- ✅ PostgreSQL database setup with migrations (0001-0012)
+- ✅ FastAPI backend with JWT auth
+- ✅ Next.js 14 frontend with TypeScript + Tailwind
+- ✅ All env vars, Dockerfiles, AWS App Runner configs
+- ✅ Full UI/UX overhaul (dark mode, Space Grotesk fonts, bento grid layout)
+
+### Phase 2: 6 Hackathon Features (Feb 2026)
+
+#### Feature 1: GitHub Signal Auditor
+- ✅ Backend: `GET /api/github/audit/:username`
+  - Fetches user repos, package.json, requirements.txt
+  - Maps dependencies to skills (React, Python, FastAPI, etc.)
+  - Analyzes commit messages for skill keywords
+  - Computes velocity score (0-100)
+  - Detects bulk upload pattern
+  - Returns: verified_skills, commit_skill_signals, velocity, warnings
+- ✅ Frontend: GitHub audit card on `/student/readiness` page
+  - Velocity metrics, verified skills badges, commit signals, warnings
+
+#### Feature 2: MRI (Market-Ready Index) Algorithm
+- ✅ Backend: `GET /api/score/mri`
+  - Formula: `MRI = (Federal Standards × 0.40) + (Market Demand × 0.30) + (Evidence Density × 0.30)`
+  - Federal Standards: based on non-negotiable + strong_signal checklist completion
+  - Market Demand: ratio of verified skills to all checklist items (Adzuna proxy)
+  - Evidence Density: proof type diversity + recency + GitHub bonus
+  - Returns: score, components, gaps, recommendations, band
+- ✅ Frontend: Redesigned `/student/readiness` page
+  - Animated score ring (SVG)
+  - 3-segment bar for each component
+  - "What's Dragging Your Score" section with actionable gaps
+  - Band: Market Ready / Competitive / Developing / Focus Gaps
+
+#### Feature 3: Sentinel Market Guard
+- ✅ Backend: `POST /api/sentinel/run`
+  - Uses Adzuna to check demand count for user's target role
+  - Compares to previous signal (detects +/- 20% shifts)
+  - Creates StudentNotification records with severity and action
+  - Also creates profile tips and skills trend alerts
+- ✅ Frontend: NavBar notification bell
+  - Red unread count badge
+  - Dropdown panel showing alerts with color-coded kind labels
+  - "Run Scan" button to trigger sentinel
+  - Mark read on click
+  - "⚡ Market Shift" label for shift alerts
+
+#### Feature 4: Interactive 90-Day Pivot Kanban
+- ✅ Backend: Full CRUD at `/api/kanban/...`
+  - `GET /api/kanban/board` - 3-column board
+  - `POST /api/kanban/tasks` - create task
+  - `PUT /api/kanban/tasks/:id` - update (drag-drop, edit)
+  - `DELETE /api/kanban/tasks/:id` - delete
+  - `POST /api/kanban/generate` - AI-powered 12-task 90-day plan (gpt-4o-mini)
+  - `POST /api/kanban/sync-github` - auto-complete tasks via GitHub
+- ✅ Frontend: `/student/kanban` page
+  - @hello-pangea/dnd drag-and-drop
+  - Week filter
+  - Add task inline
+  - AI generate + GitHub sync buttons
+  - Priority indicators, AI/GitHub badges on cards
+
+#### Feature 5: 2027 Future-Shock Simulator
+- ✅ Backend: `POST /api/simulator/future-shock`
+  - Takes acceleration (0-100)
+  - Uses RESILIENCE_MULTIPLIERS to adjust skill values
+  - Classifies skills as resilient/at_risk/stable
+  - Returns adjusted_score, delta, risk_level, recommendations
+- ✅ Frontend: Slider on `/student/readiness` page
+  - Debounced API call (400ms)
+  - Animated score display
+  - Skill risk profile grid (green=resilient, red=at_risk)
+  - Recommended pivots section
+
+#### Feature 6: Recruiter Truth-Link
+- ✅ Backend:
+  - `POST /api/profile/generate-share-link` - generates unique 10-char slug
+  - `GET /api/public/:slug` - public profile data (no auth)
+  - `share_slug` column added to `student_profiles` (migration 0012)
+- ✅ Frontend:
+  - Share panel on `/student/profile` page
+  - QR code generation (qrcode.react)
+  - Copy link button
+  - Public profile at `/profile/[slug]` (no auth required)
+  - Shows MRI score, verified skills, GitHub link
+
+#### Cross-feature Integrations
+- ✅ GitHub Audit feeds MRI (evidence_density bonus for GitHub username)
+- ✅ Sentinel creates notifications that reference Kanban actions
+- ✅ NavBar updated with Kanban and MRI Score links
+- ✅ All features interconnected
+
+## Key API Endpoints
+
+### Auth
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+
+### New Feature APIs (Phase 2)
+- `GET /api/github/audit/:username`
+- `GET /api/score/mri`
+- `POST /api/sentinel/run`
+- `GET /api/kanban/board`
+- `POST /api/kanban/tasks`
+- `PUT /api/kanban/tasks/:id`
+- `DELETE /api/kanban/tasks/:id`
+- `POST /api/kanban/generate`
+- `POST /api/kanban/sync-github`
+- `POST /api/simulator/future-shock`
+- `POST /api/profile/generate-share-link`
+- `GET /api/public/:slug`
+
+## DB Schema (Key Tables)
+- `student_accounts` - auth
+- `student_profiles` - profile info, github_username, **share_slug** (new)
+- `career_pathways` - pathway definitions
+- `user_pathways` - user's selected pathway
+- `checklist_versions`, `checklist_items` - skill requirements
+- `proofs` - user's evidence artifacts
+- `student_notifications` - sentinel alerts
+- **`kanban_tasks`** (new) - 90-day plan tasks
+
+## Environment Variables
+- `DATABASE_URL` - PostgreSQL connection
+- `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` - Adzuna market data
+- `OPENAI_API_KEY` - AI features (kanban generate, etc.)
+- `NEXT_PUBLIC_API_BASE` - Frontend API URL
+- `PUBLIC_APP_BASE_URL` - For generating public share links
+
+## Deployment
+- AWS App Runner via Dockerfiles
+- `backend/Dockerfile` + `backend/apprunner.yaml`
+- `frontend/Dockerfile.frontend` + `frontend/apprunner.yaml`
+- PostgreSQL must be externally hosted (e.g., RDS)
 
 ## Prioritized Backlog
 
-### P0 — Critical / In Progress
-- None (all core features working)
+### P0 (Critical - Done)
+- ✅ All 6 hackathon features
 
-### P1 — High Value
-- Add `data-testid` attributes to all interactive elements
-- PostgreSQL auto-start on container restart (add to supervisor or init script)
-- ai_strict_mode: consider setting to `false` for graceful fallbacks
+### P1 (Important - Upcoming)
+- Add real Adzuna salary data to MRI Market Demand score
+- GitHub OAuth flow (vs manual username entry)
+- Kanban task editing (click to edit title/description)
+- Persistent PostgreSQL for production (move from local)
 
-### P2 — Nice to Have
-- Auth UX: hide fields when not logged in (guide page)
-- Market Pivot UI improvements
-- 2027 AI shift simulation personalization
-- Email verification flow (SMTP not configured)
+### P2 (Nice to have)
+- Email notifications for sentinel alerts (via SendGrid/Resend)
+- Shareable Kanban board view (public link)
+- Historical MRI score tracking (chart over time)
+- Export profile as PDF
+- LinkedIn integration for verified skills
 
-## What's Been Implemented (2026-02-21 — Frontend Redesign)
-
-### Complete UI/UX Upgrade
-- [x] `globals.css`: Full design system rewrite — blue primary (#3D6DFF), glass morphism panels, clean tokens
-- [x] NavBar: Glass floating island, clean text nav links (no orange pills), blue primary CTA "Get Started"
-- [x] Homepage: Bold gradient hero headline, `//` live ticker, 2027 simulation section, bento quick-links grid
-- [x] Login page: Centered glass card, "Sign in" with SECURE ACCESS badge, collapsible forgot password
-- [x] Register page: Password strength indicator bar, clean centered card
-- [x] Student layout: Fixed double page-shell, badge sizing fix, mobile hamburger nav
-- [x] AWS App Runner deployment files: backend/Dockerfile, frontend/Dockerfile (standalone), apprunner.yaml
-- [x] All tests passing: 100% backend, 95%+ frontend
-
-## Next Tasks
-1. Add PostgreSQL startup to container init so it persists on restart
-2. Push to GitHub → auto-deploys to App Runner (backend) + Netlify (frontend)
-3. Set RDS DATABASE_URL env var in App Runner console
-4. Consider adding a shareable MRI Report Card URL feature
-
-## API Credentials Configured
-- OpenAI: gpt-4o-mini
-- Adzuna: APP_ID=54a2e69c
-- CareerOneStop: USER_ID=wM5MmQC75vS4dtk
-- O*NET: ashirimi1010@outlook.com
-- AWS S3: market-pathways-053549819821-uploads (us-east-1)
+### P3 (Future/Backlog)
+- Admin dashboard for university advisors
+- Cohort comparison (anonymized MRI rankings)
+- Job application tracker integration
+- Video proof submissions
