@@ -9,6 +9,11 @@ run:
   network:
     port: 8080
     env: PORT
+  env:
+    - name: PORT
+      value: "8080"
+    - name: PYTHONPATH
+      value: "/app"
   healthcheck:
     path: /meta/health
     protocol: HTTP
