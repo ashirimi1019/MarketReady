@@ -83,10 +83,10 @@ def _fetch_package_json(client: httpx.Client, owner: str, repo: str) -> dict | N
         resp = client.get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/package.json")
         if resp.status_code != 200:
             return None
-        import base64, json
+        import base64 as b64, json as _json2
         content_b64 = resp.json().get("content", "")
-        content = base64.b64decode(content_b64.replace("\n", "")).decode("utf-8")
-        return json.loads(content)
+        content = b64.b64decode(content_b64.replace("\n", "")).decode("utf-8")
+        return _json2.loads(content)
     except Exception:
         return None
 

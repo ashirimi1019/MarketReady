@@ -156,9 +156,9 @@ def delete_task(
 def _get_user_context(db: Session, user_id: str) -> dict:
     """Build context for AI plan generation."""
     from app.models.entities import (
-        ChecklistItem, ChecklistVersion, Proof, StudentProfile, UserPathway, CareerPathway
+        ChecklistItem, ChecklistVersion, Proof, StudentProfile, UserPathway as UPAlias, CareerPathway
     )
-    selection = db.query(UserPathway).filter(UserPathway.user_id == user_id).one_or_none()
+    selection = db.query(UPAlias).filter(UPAlias.user_id == user_id).one_or_none()
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).one_or_none()
     pathway_name = "Software Engineering"
     if selection:
