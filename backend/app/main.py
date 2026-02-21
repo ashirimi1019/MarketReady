@@ -62,6 +62,12 @@ def _register_routes(prefix: str = "") -> None:
     app.include_router(ai.router, tags=["ai"], prefix=prefix)
     app.include_router(market.router, tags=["market"], prefix=prefix)
     app.include_router(meta.router, tags=["meta"], prefix=prefix)
+    app.include_router(github.router, tags=["github"], prefix=prefix)
+    app.include_router(mri.router, tags=["mri"], prefix=prefix)
+    app.include_router(sentinel.router, tags=["sentinel"], prefix=prefix)
+    app.include_router(kanban.router, tags=["kanban"], prefix=prefix)
+    app.include_router(simulator.router, tags=["simulator"], prefix=prefix)
+    app.include_router(public_profile.router, tags=["public"], prefix=prefix)
 
 
 _register_routes("")
