@@ -13,8 +13,8 @@ import time
 
 BASE_URL = "https://market-sentinel-54.preview.emergentagent.com/api"
 
-MAJOR_ID = "854d6c9b-b976-441d-85b6-1b3cf5aa204d"
-PATHWAY_ID = "a4a36bdd-763d-4693-9da5-25da136489f5"
+MAJOR_ID = "1b932e5c-015b-41de-b329-a87fa3cdd240"
+PATHWAY_ID = "7e1c85f0-d2bd-462f-a0e0-e75fa8e6a1c0"
 
 # Test user for proficiency testing (separate from testuser)
 PROF_TEST_USER = "proftest_user"
