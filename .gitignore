@@ -26,3 +26,7 @@ backend/training/
 # Local docs/scratch
 tmp_*.*
 *.docx
+-e 
+# Environment files
+*.env
+*.env.*
