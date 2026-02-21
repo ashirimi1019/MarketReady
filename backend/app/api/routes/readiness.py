@@ -60,8 +60,9 @@ def _load_readiness(
         .first()
     )
     if milestone and milestone.title not in score.get("next_actions", []):
+        milestone_label = re.sub(r'(?i)\bsemester\b', 'Year', milestone.title)
         score["next_actions"] = score.get("next_actions", []) + [
-            f"Review milestone: {re.sub(r'(?i)\\bsemester\\b', 'Year', milestone.title)}"
+            f"Review milestone: {milestone_label}"
         ]
     return score
 
