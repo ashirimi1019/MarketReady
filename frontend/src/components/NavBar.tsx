@@ -78,15 +78,15 @@ export default function NavBar() {
       </div>
 
       {/* Desktop nav */}
-      <nav className="nav-links nav-links-main hidden md:flex" data-testid="nav-links-auth">
-        <Link href="/student/profile" data-testid="nav-profile">Profile</Link>
-        <Link href="/student/checklist" data-testid="nav-checklist">Tasks</Link>
-        <Link href="/student/readiness" data-testid="nav-readiness">My Score</Link>
-        <Link href="/student/onboarding" data-testid="nav-onboarding">My Plan</Link>
-        <Link href="/student/proofs" data-testid="nav-proofs">Proof Vault</Link>
-        <Link href="/student/interview" data-testid="nav-interview">Interview AI</Link>
-        <Link href="/student/resume-architect" data-testid="nav-skill-gap">Skill Gap</Link>
-        <Link href="/student/guide" data-testid="nav-mission">Market Mission</Link>
+      <nav className="nav-links nav-links-main hidden md:flex overflow-x-auto" style={{ scrollbarWidth: "none" }} data-testid="nav-links-auth">
+        <Link href="/student/profile" data-testid="nav-profile" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>Profile</Link>
+        <Link href="/student/checklist" data-testid="nav-checklist" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>Tasks</Link>
+        <Link href="/student/readiness" data-testid="nav-readiness" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>My Score</Link>
+        <Link href="/student/onboarding" data-testid="nav-onboarding" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>My Plan</Link>
+        <Link href="/student/proofs" data-testid="nav-proofs" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>Proof Vault</Link>
+        <Link href="/student/interview" data-testid="nav-interview" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>Interview AI</Link>
+        <Link href="/student/resume-architect" data-testid="nav-skill-gap" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>Skill Gap</Link>
+        <Link href="/student/guide" data-testid="nav-mission" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>Market Mission</Link>
       </nav>
 
       {/* Mobile toggle */}
