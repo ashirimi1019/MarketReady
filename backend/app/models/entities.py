@@ -380,3 +380,21 @@ class AiResumeArtifact(Base):
     markdown_content = Column(Text, nullable=False)
     structured_json = Column("structured", JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class KanbanTask(Base):
+    __tablename__ = "kanban_tasks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(String(120), nullable=False, index=True)
+    title = Column(String(300), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(32), nullable=False, default="todo")  # todo, in_progress, done
+    week_number = Column(Integer, nullable=True)
+    skill_tag = Column(String(120), nullable=True)
+    priority = Column(String(32), nullable=True, default="medium")  # low, medium, high
+    github_synced = Column(Boolean, nullable=False, default=False)
+    ai_generated = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
