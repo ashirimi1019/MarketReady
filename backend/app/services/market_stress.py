@@ -33,7 +33,22 @@ class MarketBenchmarks:
 
 
 def _normalize_skill(text: str) -> str:
-    return " ".join((text or "").strip().lower().replace("_", " ").split())
+    return " ".join(
+        (text or "")
+        .strip()
+        .lower()
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace("/", " ")
+        .split()
+    )
+
+
+def _canonical_token(token: str) -> str:
+    value = (token or "").strip().lower()
+    if len(value) > 4 and value.endswith("s"):
+        value = value[:-1]
+    return value
 
 
 SKILL_ALIASES: dict[str, set[str]] = {
@@ -158,25 +173,119 @@ def fetch_careeronestop_skills(target_job: str) -> list[str]:
         raise RuntimeError("CareerOneStop is not configured. Set CAREERONESTOP_API_KEY and CAREERONESTOP_USER_ID.")
 
     job = quote((target_job or "software developer").strip(), safe="")
-    timeout = 12.0
+    timeout = 20.0
     headers = {"Authorization": f"Bearer {settings.careeronestop_api_key}"}
-    url = "https://api.careeronestop.org/v1/skillsmatcher/" f"{settings.careeronestop_user_id}/{job}/US"
-    with httpx.Client(timeout=timeout) as client:
-        try:
-            response = client.get(url, headers=headers)
-            response.raise_for_status()
-            payload = response.json()
-        except Exception:
-            raise RuntimeError("CareerOneStop skills matcher failed or timed out.")
+    occ_url = (
+        "https://api.careeronestop.org/v1/occupation/"
+        f"{settings.careeronestop_user_id}/{job}/US/0/10"
+    )
 
-    rows = payload.get("Skills") or payload.get("skills") or payload.get("SkillList") or payload.get("results") or []
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            occ_response = client.get(occ_url, headers=headers)
+            occ_response.raise_for_status()
+            occ_payload = occ_response.json()
+            occupation_rows = (
+                occ_payload.get("OccupationList")
+                or occ_payload.get("OccupationDetailList")
+                or occ_payload.get("Occupations")
+                or []
+            )
+            if not occupation_rows:
+                raise RuntimeError("CareerOneStop returned no occupations for this target role.")
+
+            normalized_target_job = _normalize_skill(target_job or "software developer")
+            target_tokens = {
+                _canonical_token(token)
+                for token in normalized_target_job.split()
+                if token and token not in {"and", "or", "the", "a", "an", "of"}
+            }
+            lead_target_token = normalized_target_job.split()[0] if normalized_target_job.split() else ""
+            best_row: dict[str, Any] | None = None
+            best_score = -1.0
+            for row in occupation_rows:
+                if not isinstance(row, dict):
+                    continue
+                title = _normalize_skill(str(row.get("OnetTitle") or row.get("Title") or ""))
+                if not title:
+                    continue
+                title_tokens = {_canonical_token(token) for token in title.split() if token}
+                overlap = len(target_tokens & title_tokens)
+                direct = 1 if lead_target_token and title.startswith(lead_target_token) else 0
+                score = (overlap * 2.0) + direct
+                if score > best_score:
+                    best_score = score
+                    best_row = row
+
+            first = best_row or (occupation_rows[0] if isinstance(occupation_rows[0], dict) else {})
+            onet_code = str(
+                first.get("OnetCode")
+                or first.get("OccupationCode")
+                or first.get("Code")
+                or ""
+            ).strip()
+            if not onet_code:
+                raise RuntimeError("CareerOneStop occupation response did not include an O*NET code.")
+
+            detail_url = (
+                "https://api.careeronestop.org/v1/occupation/"
+                f"{settings.careeronestop_user_id}/{quote(onet_code, safe='')}/US"
+            )
+            detail_response = client.get(
+                detail_url,
+                headers=headers,
+                params={
+                    "skills": "true",
+                    "knowledge": "true",
+                    "ability": "true",
+                },
+            )
+            detail_response.raise_for_status()
+            detail_payload = detail_response.json()
+    except Exception:
+        raise RuntimeError("CareerOneStop skills matcher failed or timed out.")
+
+    detail_rows = detail_payload.get("OccupationDetail") or []
+    detail = detail_rows[0] if detail_rows and isinstance(detail_rows[0], dict) else {}
+    ranked: list[tuple[float, str]] = []
+
+    for key in ("SkillsDataList", "KnowledgeDataList"):
+        rows = detail.get(key) or []
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            raw_name = row.get("ElementName") or row.get("Skill") or row.get("name")
+            if not raw_name:
+                continue
+            norm = _normalize_skill(str(raw_name))
+            if not norm:
+                continue
+            try:
+                importance = float(row.get("Importance") or row.get("DataValue") or 0.0)
+            except Exception:
+                importance = 0.0
+            ranked.append((importance, norm))
+
+    if not ranked:
+        for row in occupation_rows:
+            if not isinstance(row, dict):
+                continue
+            text = " ".join(
+                str(row.get(key) or "")
+                for key in ("OnetTitle", "OccupationDescription", "Duties", "BrightOutlook")
+            ).lower()
+            for canonical, aliases in SKILL_ALIASES.items():
+                alias_pool = set(aliases) | {canonical}
+                if any(alias in text for alias in alias_pool if alias):
+                    ranked.append((10.0, canonical))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
     out: list[str] = []
-    for row in rows:
-        raw = row.get("Skill") or row.get("name") or row.get("title") or row.get("Description")
-        if raw:
-            norm = _normalize_skill(str(raw))
-            if norm and norm not in out:
-                out.append(norm)
+    for _, norm in ranked:
+        if norm and norm not in out:
+            out.append(norm)
         if len(out) >= 40:
             break
     if not out:
