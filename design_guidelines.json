@@ -1,0 +1,105 @@
+{
+  "identity": {
+    "name": "Market Ready",
+    "persona": "The Career Tactician",
+    "tone": "Battle-Ready, Precise, Data-Driven, High-Contrast",
+    "archetype": "The Performance Pro (Archetype 2)"
+  },
+  "typography": {
+    "font_family": {
+      "sans": "var(--font-space), system-ui, sans-serif",
+      "mono": "var(--font-plex-mono), monospace"
+    },
+    "scale": {
+      "h1": "text-5xl md:text-7xl font-bold tracking-tight leading-[0.9]",
+      "h2": "text-3xl md:text-4xl font-semibold tracking-tight",
+      "h3": "text-xl md:text-2xl font-medium",
+      "body": "text-base leading-relaxed text-muted-foreground",
+      "mono_label": "font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground"
+    }
+  },
+  "colors": {
+    "dark": {
+      "background": "#030512",
+      "foreground": "#E0E6FF",
+      "surface": "#080C1E",
+      "surface_highlight": "#0F162B",
+      "border": "rgba(60, 110, 255, 0.15)",
+      "primary": "#3D6DFF",
+      "primary_glow": "rgba(61, 109, 255, 0.4)",
+      "accent": "#FF7B1A",
+      "accent_glow": "rgba(255, 123, 26, 0.3)",
+      "success": "#00C896",
+      "danger": "#FF3B30",
+      "warning": "#FFB300"
+    },
+    "light": {
+      "background": "#F5F7FA",
+      "foreground": "#0F172A",
+      "surface": "#FFFFFF",
+      "surface_highlight": "#F0F4FF",
+      "border": "rgba(60, 110, 255, 0.1)",
+      "primary": "#3056D3",
+      "primary_glow": "rgba(48, 86, 211, 0.2)",
+      "accent": "#F97316",
+      "accent_glow": "rgba(249, 115, 22, 0.15)",
+      "success": "#059669",
+      "danger": "#DC2626",
+      "warning": "#D97706"
+    }
+  },
+  "visual_enhancers": {
+    "glass": "backdrop-blur-xl bg-white/5 border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.36)]",
+    "glass_light": "backdrop-blur-xl bg-white/70 border border-white/20 shadow-sm",
+    "neon_border": "border border-primary/50 shadow-[0_0_15px_rgba(61,109,255,0.3)]",
+    "gradient_text": "bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-white/60",
+    "noise_overlay": "opacity-5 mix-blend-overlay pointer-events-none fixed inset-0 z-50 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"
+  },
+  "layout_strategies": {
+    "container": "max-w-7xl mx-auto px-6 md:px-12",
+    "bento_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "section_spacing": "py-24 md:py-32"
+  },
+  "components": {
+    "buttons": {
+      "primary": "relative inline-flex items-center justify-center px-8 py-3 overflow-hidden font-mono font-medium tracking-tighter text-white bg-primary rounded-lg group hover:bg-primary/90 transition-all duration-300 shadow-[0_0_20px_rgba(61,109,255,0.3)] hover:shadow-[0_0_30px_rgba(61,109,255,0.5)]",
+      "secondary": "inline-flex items-center justify-center px-8 py-3 font-mono font-medium tracking-tighter text-foreground border border-border rounded-lg hover:bg-surface-highlight transition-all duration-300 hover:border-primary/50"
+    },
+    "cards": {
+      "base": "relative overflow-hidden rounded-2xl border border-border bg-surface/50 p-8 hover:border-primary/30 transition-colors duration-300 group",
+      "feature": "group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-transparent p-8 md:p-12"
+    },
+    "inputs": {
+      "base": "w-full bg-surface-highlight/50 border border-border rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200"
+    }
+  },
+  "image_urls": {
+    "hero_bg": "https://images.pexels.com/photos/30547612/pexels-photo-30547612.jpeg",
+    "hero_people": "https://images.pexels.com/photos/1181738/pexels-photo-1181738.jpeg",
+    "abstract_texture": "https://images.unsplash.com/photo-1768327239495-cd6edaeab619?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "grid_overlay": "https://assets.codepen.io/1462889/grid-overlay.png" 
+  },
+  "instructions_to_main_agent": [
+    "1. UPDATE `globals.css`: Replace the entire content with the provided CSS variables and utility classes. Focus on the `dark` theme variables as the default.",
+    "2. REFACTOR `layout.tsx`: Add the `noise_overlay` div to the body. Ensure the font variables are applied correctly.",
+    "3. REFACTOR `page.tsx`: Rewrite the layout to use a 'Bento Grid' for the dashboard sections. Replace the 'Quick Links' list with a visual grid of cards.",
+    "4. COMPONENTS: Do not install Shadcn. Use the provided Tailwind utility classes directly in the JSX. Build 'Card' and 'Button' components inline or as small helper components within the file if needed to reduce repetition, but keeping it in `page.tsx` is fine for this scope.",
+    "5. MOTION: Add simple `framer-motion` (if available) or CSS transitions `hover:scale-[1.02]` to all interactive cards.",
+    "6. NAV: Make the Navbar a floating 'Glass' island at the top, not a full-width bar."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy",
+    "Use glass-morphism effects with backdrop filters (12-24px blur)",
+    "You MUST NOT apply universal transition. Eg: `transition: all`. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms",
+    "You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file. This disrupts the human natural reading flow of text",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯📚🎭🎬🎪🎉🎊🎁🎀🎂🍰🎈🎨🎰💰💵💳🏦💎🪙💸🤑📊📈📉💹🔢🏆🥇 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN"
+  ]
+}
