@@ -17,6 +17,9 @@ def _bench(vacancy_index: float) -> ms.MarketBenchmarks:
         vacancy_index=vacancy_index,
         trend_label="heating_up",
         volatility_points=[{"x": 0.0, "y": 100.0}, {"x": 1.0, "y": 120.0}],
+        adzuna_query_mode="exact",
+        adzuna_query_used="software engineer",
+        adzuna_location_used="United States",
     )
 
 
@@ -38,6 +41,8 @@ def test_mri_formula_uses_weighted_components(monkeypatch):
     assert result["components"]["market_trend_score"] == 80.0
     assert result["components"]["evidence_verification_score"] == 50.0
     assert result["score"] == 59.0
+    assert result["adzuna_query_mode"] == "exact"
+    assert result["adzuna_query_used"] == "software engineer"
 
 
 def test_major_scores_are_clamped_to_0_100(monkeypatch):

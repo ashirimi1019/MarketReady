@@ -20,6 +20,9 @@ export default function StudentProofsPage() {
     source_mode: "live" | "snapshot_fallback";
     snapshot_timestamp?: string | null;
     snapshot_age_minutes?: number | null;
+    adzuna_query_mode?: "exact" | "role_rewrite" | "geo_widen" | "proxy_from_search";
+    adzuna_query_used?: string | null;
+    adzuna_location_used?: string | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,6 +85,9 @@ export default function StudentProofsPage() {
         source_mode: result.source_mode,
         snapshot_timestamp: result.snapshot_timestamp,
         snapshot_age_minutes: result.snapshot_age_minutes,
+        adzuna_query_mode: result.adzuna_query_mode,
+        adzuna_query_used: result.adzuna_query_used,
+        adzuna_location_used: result.adzuna_location_used,
       });
       const refreshed = await apiGet<Proof[]>("/user/proofs", headers);
       setProofs(refreshed);
@@ -165,6 +171,10 @@ export default function StudentProofsPage() {
                   : ""}
               </span>
             )}
+            <span className="text-xs text-[color:var(--muted)]">
+              Adzuna mode: {lastRepoSource.adzuna_query_mode || "exact"} | Query: {lastRepoSource.adzuna_query_used || "n/a"} |
+              Location: {lastRepoSource.adzuna_location_used || "n/a"}
+            </span>
           </div>
         )}
       </div>

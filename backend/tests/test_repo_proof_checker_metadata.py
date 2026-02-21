@@ -40,6 +40,9 @@ def _bench() -> ms.MarketBenchmarks:
         vacancy_index=72.0,
         trend_label="heating_up",
         volatility_points=[{"x": 0.0, "y": 100.0}, {"x": 1.0, "y": 120.0}],
+        adzuna_query_mode="role_rewrite",
+        adzuna_query_used="backend developer",
+        adzuna_location_used="United States",
     )
 
 
@@ -73,6 +76,8 @@ def test_repo_metadata_is_persisted(monkeypatch):
 
     assert out["source_mode"] == "live"
     assert out["match_count"] == 1
+    assert out["adzuna_query_mode"] == "role_rewrite"
+    assert out["adzuna_query_used"] == "backend developer"
     assert proof.metadata_json["repo_verified"] is True
     assert proof.metadata_json["repo_matched_skills"] == ["python"]
     assert proof.metadata_json["repo_confidence"] == 50.0

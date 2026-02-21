@@ -340,6 +340,9 @@ class MarketStressTestOut(BaseModel):
     top_hiring_companies: List[dict[str, Any]] = Field(default_factory=list)
     vacancy_growth_percent: float = 0.0
     market_volatility_score: float = 0.0
+    adzuna_query_mode: str = "exact"
+    adzuna_query_used: Optional[str] = None
+    adzuna_location_used: Optional[str] = None
     vacancy_trend_label: str = "neutral"
     job_stability_score_2027: float = 0.0
     data_freshness: str = "unknown"
@@ -372,6 +375,9 @@ class RepoProofCheckerOut(BaseModel):
     repos_checked: List[str] = Field(default_factory=list)
     languages_detected: List[str] = Field(default_factory=list)
     vacancy_trend_label: str = "neutral"
+    adzuna_query_mode: str = "exact"
+    adzuna_query_used: Optional[str] = None
+    adzuna_location_used: Optional[str] = None
     source_mode: str = "live"
     snapshot_timestamp: Optional[str] = None
     snapshot_age_minutes: Optional[float] = None

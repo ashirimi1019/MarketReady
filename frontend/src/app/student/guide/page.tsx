@@ -35,6 +35,13 @@ function trendLabel(value: string): string {
   return "Neutral";
 }
 
+function adzunaModeLabel(value?: string | null): string {
+  if (value === "role_rewrite") return "rewrite";
+  if (value === "geo_widen") return "geo widen";
+  if (value === "proxy_from_search") return "proxy";
+  return "exact";
+}
+
 function mriTheme(score: number) {
   if (score >= 75) {
     return {
@@ -639,6 +646,15 @@ export default function StudentAiGuidePage() {
                 Data freshness: {stressResult.data_freshness} | Source: {stressResult.source_mode} | Providers:
                 adzuna={stressResult.provider_status.adzuna}, careeronestop={stressResult.provider_status.careeronestop}
               </p>
+              <p className="mt-1 text-xs text-[color:var(--muted)]">
+                Adzuna mode: {adzunaModeLabel(stressResult.adzuna_query_mode)} | Query:{" "}
+                {stressResult.adzuna_query_used || "n/a"} | Location: {stressResult.adzuna_location_used || "n/a"}
+              </p>
+              {stressResult.adzuna_query_mode === "proxy_from_search" && (
+                <p className="mt-1 text-xs text-amber-300">
+                  Live trend derived from recent posting windows (1d/3d/7d/14d/30d).
+                </p>
+              )}
               {stressResult.source_mode === "snapshot_fallback" && (
                 <p className="mt-1 text-xs text-amber-300">
                   {formatSnapshotFreshness(stressResult.snapshot_timestamp, stressResult.snapshot_age_minutes)}
@@ -784,6 +800,15 @@ export default function StudentAiGuidePage() {
               Repos checked: {repoResult.repos_checked.join(", ") || "none"} | Languages detected: {repoResult.languages_detected.join(", ") || "none"}
             </p>
             <p className="text-xs text-[color:var(--muted)]">Files scanned: {repoResult.files_checked.join(", ") || "none"}</p>
+            <p className="text-xs text-[color:var(--muted)]">
+              Adzuna mode: {adzunaModeLabel(repoResult.adzuna_query_mode)} | Query: {repoResult.adzuna_query_used || "n/a"} |
+              Location: {repoResult.adzuna_location_used || "n/a"}
+            </p>
+            {repoResult.adzuna_query_mode === "proxy_from_search" && (
+              <p className="text-xs text-amber-300">
+                Live trend derived from recent posting windows (1d/3d/7d/14d/30d).
+              </p>
+            )}
             {repoResult.source_mode === "snapshot_fallback" && (
               <p className="text-xs text-amber-300">
                 {formatSnapshotFreshness(repoResult.snapshot_timestamp, repoResult.snapshot_age_minutes)}

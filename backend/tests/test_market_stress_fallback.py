@@ -65,6 +65,7 @@ def test_provider_failure_uses_snapshot_fallback(monkeypatch):
     assert result["snapshot_timestamp"] == "2026-02-21T01:00:00Z"
     assert result["provider_status"]["adzuna"] == "snapshot_fallback"
     assert result["provider_status"]["careeronestop"] == "snapshot_fallback"
+    assert "adzuna_query_mode" in result
 
 
 def test_expired_or_missing_snapshot_raises_provider_error(monkeypatch):

@@ -109,6 +109,9 @@ try {
   Ensure-HasField $stress "components" "market-stress-test"
   Ensure-HasField $stress "market_volatility_points" "market-stress-test"
   Ensure-HasField $stress "top_hiring_companies" "market-stress-test"
+  Ensure-HasField $stress "adzuna_query_mode" "market-stress-test"
+  Ensure-HasField $stress "adzuna_query_used" "market-stress-test"
+  Ensure-HasField $stress "adzuna_location_used" "market-stress-test"
 
   if (($stress.market_volatility_points | Measure-Object).Count -lt 1) {
     throw "market-stress-test returned empty market_volatility_points."
@@ -121,6 +124,9 @@ try {
     score = $stress.score
     source_mode = $stress.source_mode
     snapshot_timestamp = $stress.snapshot_timestamp
+    adzuna_query_mode = $stress.adzuna_query_mode
+    adzuna_query_used = $stress.adzuna_query_used
+    adzuna_location_used = $stress.adzuna_location_used
   }
 } catch {
   $message = if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
@@ -139,6 +145,9 @@ try {
   Ensure-HasField $proof "repo_confidence" "proof-checker"
   Ensure-HasField $proof "verified_by_repo_skills" "proof-checker"
   Ensure-HasField $proof "source_mode" "proof-checker"
+  Ensure-HasField $proof "adzuna_query_mode" "proof-checker"
+  Ensure-HasField $proof "adzuna_query_used" "proof-checker"
+  Ensure-HasField $proof "adzuna_location_used" "proof-checker"
   Ensure-Array $proof "files_checked" "proof-checker"
   Ensure-Array $proof "repos_checked" "proof-checker"
   Ensure-Array $proof "languages_detected" "proof-checker"
@@ -158,6 +167,9 @@ try {
     required_skills_count = $proof.required_skills_count
     source_mode = $proof.source_mode
     snapshot_timestamp = $proof.snapshot_timestamp
+    adzuna_query_mode = $proof.adzuna_query_mode
+    adzuna_query_used = $proof.adzuna_query_used
+    adzuna_location_used = $proof.adzuna_location_used
   }
 } catch {
   $message = if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }

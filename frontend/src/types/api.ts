@@ -332,6 +332,9 @@ export type MarketStressTest = {
   top_hiring_companies?: Array<{ name: string; open_roles: number }>;
   vacancy_growth_percent?: number;
   market_volatility_score?: number;
+  adzuna_query_mode?: "exact" | "role_rewrite" | "geo_widen" | "proxy_from_search";
+  adzuna_query_used?: string | null;
+  adzuna_location_used?: string | null;
   vacancy_trend_label: string;
   job_stability_score_2027: number;
   data_freshness: string;
@@ -368,6 +371,9 @@ export type RepoProofChecker = {
   repos_checked: string[];
   languages_detected: string[];
   vacancy_trend_label: string;
+  adzuna_query_mode?: "exact" | "role_rewrite" | "geo_widen" | "proxy_from_search";
+  adzuna_query_used?: string | null;
+  adzuna_location_used?: string | null;
   source_mode: "live" | "snapshot_fallback";
   snapshot_timestamp?: string | null;
   snapshot_age_minutes?: number | null;

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -27,6 +27,7 @@ SNAPSHOT_SOURCE_ADZUNA = "mri:adzuna:v1"
 SNAPSHOT_TTL_SKILLS_HOURS = 168
 SNAPSHOT_TTL_ADZUNA_HOURS = 24
 SNAPSHOT_TTL_STRESS_HOURS = 24
+ADZUNA_PROXY_WINDOWS = (30, 14, 7, 3, 1)
 
 
 @dataclass
@@ -35,6 +36,9 @@ class MarketBenchmarks:
     vacancy_index: float
     trend_label: str
     volatility_points: list[dict[str, float]]
+    adzuna_query_mode: str = "exact"
+    adzuna_query_used: str | None = None
+    adzuna_location_used: str | None = None
     history_points_found: int = 0
     salary_points_found: int = 0
     salary_percentile_local: float | None = None
@@ -94,13 +98,67 @@ HIGH_RESILIENCE_TOKENS = (
     "distributed systems",
 )
 
+ADZUNA_ROLE_REWRITES: dict[str, list[str]] = {
+    "backend engineer": ["backend developer", "software developer", "software engineer", "python developer"],
+    "frontend developer": ["web developer", "javascript developer", "software engineer"],
+    "frontend engineer": ["frontend developer", "web developer", "javascript developer"],
+    "cybersecurity analyst": ["information security analyst", "security analyst", "cyber security analyst"],
+    "cloud security engineer": ["security engineer", "cloud engineer", "devops engineer"],
+    "ml engineer": ["machine learning engineer", "ai engineer", "data scientist"],
+    "data engineer": ["data developer", "etl developer", "software engineer"],
+}
+
 
 def _utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _clamp_score(value: float) -> float:
     return max(0.0, min(100.0, float(value)))
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = str(raw or "").strip()
+        key = value.lower()
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        out.append(value)
+    return out
+
+
+def _build_role_candidates(target_job: str) -> list[str]:
+    base = (target_job or "software engineer").strip() or "software engineer"
+    normalized = _normalize_skill(base)
+    variants: list[str] = [base]
+    variants.extend(ADZUNA_ROLE_REWRITES.get(normalized, []))
+
+    if "engineer" in normalized:
+        generic = " ".join("developer" if token == "engineer" else token for token in normalized.split())
+        if generic:
+            variants.append(generic)
+
+    if "developer" in normalized and "software developer" not in [v.lower() for v in variants]:
+        variants.append("software developer")
+    if "software engineer" not in [v.lower() for v in variants]:
+        variants.append("software engineer")
+
+    return _dedupe_strings(variants)
+
+
+def _build_location_candidates(location: str) -> list[str]:
+    base = (location or "United States").strip() or "United States"
+    variants: list[str] = [base]
+    if "," in base:
+        tail = base.split(",")[-1].strip()
+        if tail:
+            variants.append(tail)
+    if base.lower() not in {"united states", "us", "usa"}:
+        variants.append("United States")
+    return _dedupe_strings(variants)
 
 
 def _snapshot_key(target_job: str, location: str) -> str:
@@ -112,7 +170,9 @@ def _snapshot_key(target_job: str, location: str) -> str:
 def _format_snapshot_timestamp(value: datetime | None) -> str | None:
     if not value:
         return None
-    return value.replace(microsecond=0).isoformat() + "Z"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _parse_snapshot_timestamp(value: Any, fallback: datetime | None) -> datetime | None:
@@ -120,10 +180,17 @@ def _parse_snapshot_timestamp(value: Any, fallback: datetime | None) -> datetime
     if text:
         cleaned = text[:-1] if text.endswith("Z") else text
         try:
-            return datetime.fromisoformat(cleaned)
+            parsed = datetime.fromisoformat(cleaned)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
         except Exception:
             pass
-    return fallback
+    if fallback is None:
+        return None
+    if fallback.tzinfo is None:
+        return fallback.replace(tzinfo=timezone.utc)
+    return fallback.astimezone(timezone.utc)
 
 
 def _snapshot_age_minutes(timestamp: datetime | None) -> float | None:
@@ -189,6 +256,9 @@ def _benchmark_to_payload(benchmark: MarketBenchmarks) -> dict[str, Any]:
         "vacancy_index": benchmark.vacancy_index,
         "trend_label": benchmark.trend_label,
         "volatility_points": benchmark.volatility_points,
+        "adzuna_query_mode": benchmark.adzuna_query_mode,
+        "adzuna_query_used": benchmark.adzuna_query_used,
+        "adzuna_location_used": benchmark.adzuna_location_used,
         "history_points_found": benchmark.history_points_found,
         "salary_points_found": benchmark.salary_points_found,
         "salary_percentile_local": benchmark.salary_percentile_local,
@@ -204,6 +274,9 @@ def _benchmark_from_payload(payload: dict[str, Any]) -> MarketBenchmarks:
         vacancy_index=float(payload.get("vacancy_index") or 0.0),
         trend_label=str(payload.get("trend_label") or "neutral"),
         volatility_points=payload.get("volatility_points") if isinstance(payload.get("volatility_points"), list) else [],
+        adzuna_query_mode=str(payload.get("adzuna_query_mode") or "exact"),
+        adzuna_query_used=str(payload.get("adzuna_query_used") or "") or None,
+        adzuna_location_used=str(payload.get("adzuna_location_used") or "") or None,
         history_points_found=int(payload.get("history_points_found") or 0),
         salary_points_found=int(payload.get("salary_points_found") or 0),
         salary_percentile_local=payload.get("salary_percentile_local"),
@@ -245,15 +318,225 @@ def _snapshot_stress_fallback(
     payload["data_freshness"] = "snapshot_fallback"
     payload["snapshot_timestamp"] = snapshot.get("snapshot_timestamp")
     payload["snapshot_age_minutes"] = snapshot.get("snapshot_age_minutes")
+    payload.setdefault("adzuna_query_mode", "exact")
+    payload.setdefault("adzuna_query_used", None)
+    payload.setdefault("adzuna_location_used", None)
     return payload
+
+
+def _fetch_history_points(
+    client: httpx.Client,
+    *,
+    base: str,
+    country: str,
+    what: str,
+    where: str,
+) -> list[dict[str, float]]:
+    response = client.get(
+        f"{base}/{country}/history",
+        params={
+            "app_id": settings.adzuna_app_id,
+            "app_key": settings.adzuna_app_key,
+            "what": what,
+            "where": where,
+            "months": 6,
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    rows = payload.get("month") or payload.get("results") or []
+
+    points: list[dict[str, float]] = []
+    if isinstance(rows, dict):
+        for idx, (_, value) in enumerate(sorted(rows.items(), key=lambda item: item[0])):
+            count = float(value or 0.0)
+            points.append({"x": float(idx), "y": count})
+    elif isinstance(rows, list):
+        for idx, row in enumerate(rows):
+            count = 0.0
+            if isinstance(row, dict):
+                count = float(row.get("count") or row.get("vacancies") or row.get("value") or 0)
+            elif isinstance(row, (int, float)):
+                count = float(row)
+            points.append({"x": float(idx), "y": count})
+    return points
+
+
+def _fetch_search_count(
+    client: httpx.Client,
+    *,
+    base: str,
+    country: str,
+    what: str,
+    where: str,
+    max_days_old: int,
+) -> float:
+    try:
+        response = client.get(
+            f"{base}/{country}/search/1",
+            params={
+                "app_id": settings.adzuna_app_id,
+                "app_key": settings.adzuna_app_key,
+                "what": what,
+                "where": where,
+                "results_per_page": 1,
+                "max_days_old": max_days_old,
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return 0.0
+        return float(payload.get("count") or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _fetch_histogram_metrics(
+    client: httpx.Client,
+    *,
+    base: str,
+    country: str,
+    what: str,
+    where: str,
+) -> tuple[float | None, int, float | None]:
+    response = client.get(
+        f"{base}/{country}/histogram",
+        params={
+            "app_id": settings.adzuna_app_id,
+            "app_key": settings.adzuna_app_key,
+            "what": what,
+            "where": where,
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    buckets = payload.get("salary_is_predicted") or payload.get("histogram") or payload.get("results") or {}
+    if not isinstance(buckets, dict) or not buckets:
+        return None, 0, None
+
+    weighted_sum = 0.0
+    total = 0.0
+    distribution: list[tuple[float, float]] = []
+    for key, value in buckets.items():
+        try:
+            salary = float(str(key).split("-")[0])
+            cnt = float(value)
+        except Exception:
+            continue
+        weighted_sum += salary * cnt
+        total += cnt
+        distribution.append((salary, cnt))
+
+    if total <= 0:
+        return None, 0, None
+
+    salary_avg = weighted_sum / total
+    cumulative = 0.0
+    for salary, count in sorted(distribution, key=lambda row: row[0]):
+        if salary <= salary_avg:
+            cumulative += count
+    salary_percentile_local = _clamp_score((cumulative / total) * 100.0)
+    return salary_avg, int(total), salary_percentile_local
+
+
+def _fetch_top_hiring_companies(
+    client: httpx.Client,
+    *,
+    base: str,
+    country: str,
+    what: str,
+    where: str,
+) -> list[dict[str, Any]]:
+    try:
+        response = client.get(
+            f"{base}/{country}/search/1",
+            params={
+                "app_id": settings.adzuna_app_id,
+                "app_key": settings.adzuna_app_key,
+                "what": what,
+                "where": where,
+                "results_per_page": 50,
+                "sort_by": "date",
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        rows = payload.get("results") if isinstance(payload, dict) else []
+        if not isinstance(rows, list):
+            return []
+
+        company_counts: dict[str, int] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            company_block = row.get("company")
+            company_name = ""
+            if isinstance(company_block, dict):
+                company_name = str(company_block.get("display_name") or "").strip()
+            if not company_name:
+                continue
+            company_counts[company_name] = company_counts.get(company_name, 0) + 1
+
+        return [
+            {"name": name, "open_roles": count}
+            for name, count in sorted(company_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+        ]
+    except Exception:
+        return []
+
+
+def _compute_proxy_from_search(
+    client: httpx.Client,
+    *,
+    base: str,
+    country: str,
+    what: str,
+    where: str,
+) -> dict[str, Any] | None:
+    counts = [
+        _fetch_search_count(
+            client,
+            base=base,
+            country=country,
+            what=what,
+            where=where,
+            max_days_old=days,
+        )
+        for days in ADZUNA_PROXY_WINDOWS
+    ]
+    if max(counts) <= 0:
+        return None
+
+    rates = [count / days for count, days in zip(counts, ADZUNA_PROXY_WINDOWS)]
+    base_rate = max(rates[0], 0.1)
+    recent_rate = rates[-1]
+
+    vacancy_index = _clamp_score((recent_rate / base_rate) * 50.0)
+    vacancy_growth_percent = ((recent_rate - base_rate) / base_rate) * 100.0
+
+    mean = sum(rates) / len(rates)
+    variance = sum((value - mean) ** 2 for value in rates) / len(rates)
+    std_dev = variance ** 0.5
+    volatility_score = _clamp_score((std_dev / max(mean, 0.1)) * 100.0)
+
+    trend_label = "heating_up" if vacancy_index >= 60 else "cooling_down" if vacancy_index <= 40 else "neutral"
+    points = [{"x": float(idx), "y": round(rate, 4)} for idx, rate in enumerate(rates)]
+    return {
+        "vacancy_index": round(vacancy_index, 2),
+        "vacancy_growth_percent": round(vacancy_growth_percent, 2),
+        "volatility_score": round(volatility_score, 2),
+        "trend_label": trend_label,
+        "volatility_points": points,
+    }
 
 
 def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
     if not settings.adzuna_app_id or not settings.adzuna_app_key:
         raise RuntimeError("Adzuna is not configured. Set ADZUNA_APP_ID and ADZUNA_APP_KEY.")
 
-    what = (target_job or "software engineer").strip()
-    where = (location or "united states").strip()
+    what = (target_job or "software engineer").strip() or "software engineer"
+    where = (location or "United States").strip() or "United States"
     country = settings.adzuna_country
     timeout = 12.0
     base = "https://api.adzuna.com/v1/api/jobs"
@@ -267,137 +550,192 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
     top_hiring_companies: list[dict[str, Any]] = []
     vacancy_growth_percent = 0.0
     volatility_score = 0.0
+    adzuna_query_mode = "exact"
+    adzuna_query_used = what
+    adzuna_location_used = where
+
+    role_candidates = _build_role_candidates(what)
+    location_candidates = _build_location_candidates(where)
+    exact_role = role_candidates[0]
+    exact_location = location_candidates[0]
+    widened_locations = location_candidates[1:]
+
+    history_success = False
 
     with httpx.Client(timeout=timeout) as client:
+        # 1) exact role + exact location
         try:
-            hist = client.get(
-                f"{base}/{country}/history",
-                params={
-                    "app_id": settings.adzuna_app_id,
-                    "app_key": settings.adzuna_app_key,
-                    "what": what,
-                    "where": where,
-                    "months": 6,
-                },
+            points = _fetch_history_points(
+                client,
+                base=base,
+                country=country,
+                what=exact_role,
+                where=exact_location,
             )
-            hist.raise_for_status()
-            payload = hist.json()
-            rows = payload.get("month") or payload.get("results") or []
-
-            if isinstance(rows, dict):
-                # Adzuna history commonly returns {"YYYY-MM": value}; preserve chronological order.
-                for idx, (_, value) in enumerate(sorted(rows.items(), key=lambda item: item[0])):
-                    count = float(value or 0.0)
-                    volatility_points.append({"x": float(idx), "y": count})
-            elif isinstance(rows, list):
-                for idx, row in enumerate(rows):
-                    count = 0.0
-                    if isinstance(row, dict):
-                        count = float(row.get("count") or row.get("vacancies") or row.get("value") or 0)
-                    elif isinstance(row, (int, float)):
-                        count = float(row)
-                    volatility_points.append({"x": float(idx), "y": count})
-
-            history_points_found = len(volatility_points)
-            if len(volatility_points) >= 2:
-                first = max(volatility_points[0]["y"], 1.0)
-                last = volatility_points[-1]["y"]
-                vacancy_index = max(0.0, min(100.0, (last / first) * 50.0))
-                vacancy_growth_percent = ((last - first) / first) * 100.0
-
-                series = [point["y"] for point in volatility_points if point["y"] > 0]
-                if len(series) >= 2:
-                    mean = sum(series) / len(series)
-                    variance = sum((value - mean) ** 2 for value in series) / len(series)
-                    std_dev = variance ** 0.5
-                    volatility_score = max(0.0, min(100.0, (std_dev / max(mean, 1.0)) * 100.0))
+            if len(points) >= 2:
+                history_success = True
+                adzuna_query_mode = "exact"
+                adzuna_query_used = exact_role
+                adzuna_location_used = exact_location
+                volatility_points = points
         except Exception:
-            raise RuntimeError("Adzuna history endpoint failed or timed out.")
+            points = []
 
-        try:
-            histo = client.get(
-                f"{base}/{country}/histogram",
-                params={
-                    "app_id": settings.adzuna_app_id,
-                    "app_key": settings.adzuna_app_key,
-                    "what": what,
-                    "where": where,
-                },
-            )
-            histo.raise_for_status()
-            payload = histo.json()
-            buckets = payload.get("salary_is_predicted") or payload.get("histogram") or payload.get("results") or {}
-            if isinstance(buckets, dict) and buckets:
-                weighted_sum = 0.0
-                total = 0.0
-                distribution: list[tuple[float, float]] = []
-                for key, value in buckets.items():
+        # 2) rewritten roles + exact location
+        if not history_success:
+            for role in role_candidates[1:]:
+                try:
+                    points = _fetch_history_points(
+                        client,
+                        base=base,
+                        country=country,
+                        what=role,
+                        where=exact_location,
+                    )
+                except Exception:
+                    continue
+                if len(points) >= 2:
+                    history_success = True
+                    adzuna_query_mode = "role_rewrite"
+                    adzuna_query_used = role
+                    adzuna_location_used = exact_location
+                    volatility_points = points
+                    break
+
+        # 3) exact role + widened locations
+        if not history_success:
+            for widened_location in widened_locations:
+                try:
+                    points = _fetch_history_points(
+                        client,
+                        base=base,
+                        country=country,
+                        what=exact_role,
+                        where=widened_location,
+                    )
+                except Exception:
+                    continue
+                if len(points) >= 2:
+                    history_success = True
+                    adzuna_query_mode = "geo_widen"
+                    adzuna_query_used = exact_role
+                    adzuna_location_used = widened_location
+                    volatility_points = points
+                    break
+
+        # 4) rewritten roles + widened locations
+        if not history_success:
+            for role in role_candidates[1:]:
+                found_in_loop = False
+                for widened_location in widened_locations:
                     try:
-                        salary = float(str(key).split("-")[0])
-                        cnt = float(value)
+                        points = _fetch_history_points(
+                            client,
+                            base=base,
+                            country=country,
+                            what=role,
+                            where=widened_location,
+                        )
                     except Exception:
                         continue
-                    weighted_sum += salary * cnt
-                    total += cnt
-                    distribution.append((salary, cnt))
-                if total > 0:
-                    salary_avg = weighted_sum / total
-                    salary_points_found = int(total)
-                    if salary_avg is not None and distribution:
-                        cumulative = 0.0
-                        for salary, count in sorted(distribution, key=lambda row: row[0]):
-                            if salary <= salary_avg:
-                                cumulative += count
-                        salary_percentile_local = max(0.0, min(100.0, (cumulative / total) * 100.0))
+                    if len(points) >= 2:
+                        history_success = True
+                        found_in_loop = True
+                        adzuna_query_mode = "geo_widen"
+                        adzuna_query_used = role
+                        adzuna_location_used = widened_location
+                        volatility_points = points
+                        break
+                if found_in_loop:
+                    break
+
+        # 5) proxy from search windows for best live pair if history remains sparse
+        if not history_success:
+            best_role = ""
+            best_location = ""
+            best_count_30 = 0.0
+            for role in role_candidates:
+                for loc in location_candidates:
+                    count_30 = _fetch_search_count(
+                        client,
+                        base=base,
+                        country=country,
+                        what=role,
+                        where=loc,
+                        max_days_old=30,
+                    )
+                    if count_30 > best_count_30:
+                        best_count_30 = count_30
+                        best_role = role
+                        best_location = loc
+
+            if best_count_30 <= 0.0 or not best_role or not best_location:
+                raise RuntimeError("Adzuna benchmarks unavailable after role rewrite, geo widen, and proxy attempts.")
+
+            proxy = _compute_proxy_from_search(
+                client,
+                base=base,
+                country=country,
+                what=best_role,
+                where=best_location,
+            )
+            if not proxy:
+                raise RuntimeError("Adzuna benchmarks unavailable after role rewrite, geo widen, and proxy attempts.")
+
+            adzuna_query_mode = "proxy_from_search"
+            adzuna_query_used = best_role
+            adzuna_location_used = best_location
+            vacancy_index = float(proxy["vacancy_index"])
+            vacancy_growth_percent = float(proxy["vacancy_growth_percent"])
+            volatility_score = float(proxy["volatility_score"])
+            volatility_points = list(proxy["volatility_points"])
+            trend_label = str(proxy["trend_label"])
+            history_points_found = 0
+        else:
+            history_points_found = len(volatility_points)
+            first = max(volatility_points[0]["y"], 1.0)
+            last = volatility_points[-1]["y"]
+            vacancy_index = _clamp_score((last / first) * 50.0)
+            vacancy_growth_percent = ((last - first) / first) * 100.0
+
+            series = [point["y"] for point in volatility_points if point["y"] > 0]
+            if len(series) >= 2:
+                mean = sum(series) / len(series)
+                variance = sum((value - mean) ** 2 for value in series) / len(series)
+                std_dev = variance ** 0.5
+                volatility_score = _clamp_score((std_dev / max(mean, 1.0)) * 100.0)
+            trend_label = "heating_up" if vacancy_index >= 60 else "cooling_down" if vacancy_index <= 40 else "neutral"
+
+        try:
+            salary_avg, salary_points_found, salary_percentile_local = _fetch_histogram_metrics(
+                client,
+                base=base,
+                country=country,
+                what=adzuna_query_used or what,
+                where=adzuna_location_used or where,
+            )
         except Exception:
             raise RuntimeError("Adzuna histogram endpoint failed or timed out.")
 
-        try:
-            search = client.get(
-                f"{base}/{country}/search/1",
-                params={
-                    "app_id": settings.adzuna_app_id,
-                    "app_key": settings.adzuna_app_key,
-                    "what": what,
-                    "where": where,
-                    "results_per_page": 50,
-                    "sort_by": "date",
-                },
-            )
-            search.raise_for_status()
-            payload = search.json()
-            rows = payload.get("results") if isinstance(payload, dict) else []
-            if isinstance(rows, list):
-                company_counts: dict[str, int] = {}
-                for row in rows:
-                    if not isinstance(row, dict):
-                        continue
-                    company_block = row.get("company")
-                    company_name = ""
-                    if isinstance(company_block, dict):
-                        company_name = str(company_block.get("display_name") or "").strip()
-                    if not company_name:
-                        continue
-                    company_counts[company_name] = company_counts.get(company_name, 0) + 1
-                top_hiring_companies = [
-                    {"name": name, "open_roles": count}
-                    for name, count in sorted(
-                        company_counts.items(),
-                        key=lambda item: item[1],
-                        reverse=True,
-                    )[:5]
-                ]
-        except Exception:
-            top_hiring_companies = []
+        top_hiring_companies = _fetch_top_hiring_companies(
+            client,
+            base=base,
+            country=country,
+            what=adzuna_query_used or what,
+            where=adzuna_location_used or where,
+        )
 
-    trend_label = "heating_up" if vacancy_index >= 60 else "cooling_down" if vacancy_index <= 40 else "neutral"
     if not volatility_points:
-        raise RuntimeError("Adzuna returned no volatility points for this query.")
+        raise RuntimeError("Adzuna benchmarks unavailable after role rewrite, geo widen, and proxy attempts.")
+
     return MarketBenchmarks(
         salary_avg=salary_avg,
         vacancy_index=round(vacancy_index, 2),
         trend_label=trend_label,
         volatility_points=volatility_points,
+        adzuna_query_mode=adzuna_query_mode,
+        adzuna_query_used=adzuna_query_used,
+        adzuna_location_used=adzuna_location_used,
         history_points_found=history_points_found,
         salary_points_found=salary_points_found,
         salary_percentile_local=round(salary_percentile_local, 2) if salary_percentile_local is not None else None,
@@ -785,6 +1123,9 @@ def compute_market_stress_test(
         "top_hiring_companies": benchmarks.top_hiring_companies,
         "vacancy_growth_percent": benchmarks.vacancy_growth_percent,
         "market_volatility_score": _clamp_score(benchmarks.volatility_score),
+        "adzuna_query_mode": benchmarks.adzuna_query_mode,
+        "adzuna_query_used": benchmarks.adzuna_query_used,
+        "adzuna_location_used": benchmarks.adzuna_location_used,
         "vacancy_trend_label": benchmarks.trend_label,
         "job_stability_score_2027": job_stability_score_2027,
         "data_freshness": source_mode,
@@ -1017,6 +1358,9 @@ def repo_proof_checker(
         "repos_checked": repo_result.get("repos_checked", []),
         "languages_detected": repo_result.get("languages_detected", []),
         "vacancy_trend_label": benchmark.trend_label,
+        "adzuna_query_mode": benchmark.adzuna_query_mode,
+        "adzuna_query_used": benchmark.adzuna_query_used,
+        "adzuna_location_used": benchmark.adzuna_location_used,
         "source_mode": source_mode,
         "snapshot_timestamp": snapshot_timestamp,
         "snapshot_age_minutes": snapshot_age_minutes,
