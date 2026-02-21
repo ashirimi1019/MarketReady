@@ -46,7 +46,23 @@ Build a proof-first career readiness platform for students that combines live ma
 - ✅ All env vars, Dockerfiles, AWS App Runner configs
 - ✅ Full UI/UX overhaul (dark mode, Space Grotesk fonts, bento grid layout)
 
-### Phase 2: 6 Hackathon Features (Feb 2026)
+### Phase 3: Proficiency & AI Certificate Verification (Feb 2026)
+
+#### Proficiency Levels on Checklist
+- ✅ `proficiency_level` field added to `Proof` model + DB migration 0013
+- ✅ MRI score weights proficiency: Beginner=50%, Intermediate=75%, Professional=100%
+- ✅ Non-negotiable AI-verified certs get 15% bonus in MRI calculation
+- ✅ New `proficiency_breakdown` and `ai_verified_certs` fields in `/api/score/mri` response
+- ✅ Checklist page completely redesigned with 3-button proficiency selector
+- ✅ Proficiency legend explains credit weights on checklist page
+- ✅ "Mark as [Level]" button for self-attested items
+- ✅ MRI Score card shows Proficiency Mix breakdown section
+
+#### AI Certificate Verification
+- ✅ Already existed: `verify_proof_with_ai()` for cert_upload proofs
+- ✅ AI Verified/Reviewing/Rejected badges prominently shown on checklist items
+- ✅ Non-negotiable cert items show "AI will verify" notice
+- ✅ AI-verified certs count tracked in MRI response
 
 #### Feature 1: GitHub Signal Auditor
 - ✅ Backend: `GET /api/github/audit/:username`
