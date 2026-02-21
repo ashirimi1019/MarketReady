@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiSend, API_BASE, getAuthHeaders } from "@/lib/api";
 import { useSession } from "@/lib/session";
+import dynamic from "next/dynamic";
+
+// QR code - dynamically imported to avoid SSR issues
+const QRCodeSVG = dynamic(
+  () => import("qrcode.react").then(mod => ({ default: mod.QRCodeSVG })),
+  { ssr: false }
+);
 
 type StudentProfile = {
   semester?: string | null;
