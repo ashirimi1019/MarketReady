@@ -184,7 +184,6 @@ def _get_user_context(db: Session, user_id: str) -> dict:
             proofs = db.query(Proof).filter(Proof.user_id == user_id).all()
             verified_ids = {str(p.checklist_item_id) for p in proofs if p.status == "verified"}
             gaps = [i.title for i in items if str(i.id) not in verified_ids and i.tier in ("non_negotiable", "strong_signal")][:8]
-
     return {
         "pathway": pathway_name,
         "gaps": gaps,
@@ -202,7 +201,7 @@ def generate_ai_plan(
     # Remove old AI-generated tasks first
     db.query(KanbanTask).filter(
         KanbanTask.user_id == user_id,
-        KanbanTask.ai_generated == True,
+        KanbanTask.ai_generated.is_(True),
     ).delete()
     db.commit()
 
