@@ -154,7 +154,7 @@ export default function StudentReadinessPage() {
             <div className="flex flex-col md:flex-row gap-8 items-center">
               <div className="flex flex-col items-center gap-2">
                 <AnimatedScore target={mri?.score ?? 0} size="lg" />
-                <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ background: mri ? `${bandColor(mri.band)}22`, color: mri ? bandColor(mri.band) : "var(--muted)" }}>
+                <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ background: mri ? `${bandColor(mri.band)}22` : undefined, color: mri ? bandColor(mri.band) : "var(--muted)" }}>
                   {mri?.band ?? "Loading..."}
                 </span>
               </div>
