@@ -58,7 +58,8 @@ def compute_mri_components(db: Session, user_id: str) -> dict[str, Any]:
             "recommendations": ["Complete your pathway setup to get your MRI score"],
             "band": "Not Started",
             "formula": "MRI = (Federal Standards × 0.40) + (Market Demand × 0.30) + (Evidence Density × 0.30)",
-            "proficiency_breakdown": {},
+            "proficiency_breakdown": {"beginner": 0, "intermediate": 0, "professional": 0},
+            "ai_verified_certs": 0,
         }
 
     items = _get_checklist_items(db, selection)
