@@ -172,7 +172,7 @@ def _get_user_context(db: Session, user_id: str) -> dict:
         if not version_id:
             version = (
                 db.query(ChecklistVersion)
-                .filter(ChecklistVersion.pathway_id == UPAlias.pathway_id)
+                .filter(ChecklistVersion.pathway_id == selection.pathway_id)
                 .filter(ChecklistVersion.status == "published")
                 .order_by(ChecklistVersion.version_number.desc())
                 .first()
