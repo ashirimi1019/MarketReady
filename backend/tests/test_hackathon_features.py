@@ -47,7 +47,8 @@ def auth_token():
     )
     assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
     data = login_resp.json()
-    token = data.get("token") or data.get("access_token")
+    # Backend returns 'auth_token' key
+    token = data.get("auth_token") or data.get("token") or data.get("access_token")
     assert token, f"No token in login response: {data}"
     return token
 
