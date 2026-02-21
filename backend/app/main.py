@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.api.routes import auth, majors, user, proofs, readiness, timeline, admin, ai, market, meta
+from app.api.routes import github, mri, sentinel, kanban, simulator, public_profile
 from app.core.config import settings
 from app.services.market_automation import start_market_scheduler, stop_market_scheduler
 
