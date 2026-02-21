@@ -96,17 +96,16 @@ class TestGitHubAudit:
         assert data.get("username") == "octocat"
         print("PASS: username field matches")
 
-    def test_audit_invalid_user_404(self):
-        """Invalid format username should return 400 (regex validation)."""
-        # Use a username that violates GitHub username regex (contains underscore at start)
+    def test_audit_invalid_user_400(self):
+        """Username exceeding 39 chars or invalid format returns 400."""
+        # 40-char username - exceeds regex limit of 39 chars
+        long_username = "a" * 40
         resp = requests.get(
-            f"{BASE_URL}/github/audit/-invalid--user",
+            f"{BASE_URL}/github/audit/{long_username}",
             timeout=20,
         )
-        # Backend validates with regex - should be 400 (invalid format) 
-        # Note: GitHub has ~39 char limit; any valid-format user may exist on GitHub
-        assert resp.status_code in (400, 404, 422), f"Expected 400/404/422 for invalid user, got {resp.status_code}"
-        print(f"PASS: Non-200 response ({resp.status_code}) for invalid/non-existent user")
+        assert resp.status_code == 400, f"Expected 400 for too-long username, got {resp.status_code}"
+        print(f"PASS: 400 for username exceeding 39 chars")
 
     def test_audit_no_auth_required(self):
         """GitHub audit endpoint should work without auth."""
