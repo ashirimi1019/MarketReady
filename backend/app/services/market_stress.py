@@ -30,8 +30,6 @@ class MarketBenchmarks:
     volatility_points: list[dict[str, float]]
     history_points_found: int = 0
     salary_points_found: int = 0
-    adzuna_status: str = "ok"
-    data_freshness: str = "live"
 
 
 def _normalize_skill(text: str) -> str:
@@ -86,109 +84,9 @@ HIGH_RESILIENCE_TOKENS = (
 )
 
 
-def _coerce_positive_float(value: Any) -> float | None:
-    try:
-        out = float(value)
-    except Exception:
-        return None
-    return out if out > 0 else None
-
-
-def _default_volatility_points() -> list[dict[str, float]]:
-    return [{"x": float(idx), "y": 50.0} for idx in range(6)]
-
-
-def _parse_adzuna_search_points(rows: list[dict[str, Any]]) -> list[dict[str, float]]:
-    if not rows:
-        return []
-
-    now = datetime.utcnow()
-    buckets = [0.0] * 6
-    total_rows = max(len(rows), 1)
-
-    for idx, row in enumerate(rows):
-        bucket: int | None = None
-        created = str(row.get("created") or "").strip()
-        if created:
-            try:
-                parsed = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                if parsed.tzinfo is not None:
-                    parsed = parsed.astimezone().replace(tzinfo=None)
-                age_days = max(0, (now - parsed).days)
-                bucket = min(5, age_days // 7)
-            except Exception:
-                bucket = None
-        if bucket is None:
-            bucket = min(5, int((idx / total_rows) * 6))
-
-        # x=0 is oldest bucket, x=5 is newest bucket.
-        buckets[5 - bucket] += 1.0
-
-    points = [{"x": float(i), "y": value} for i, value in enumerate(buckets) if value > 0]
-    if not points:
-        return [{"x": 0.0, "y": float(len(rows))}]
-    return points
-
-
-def _fetch_search_fallback(
-    client: httpx.Client,
-    *,
-    base: str,
-    country: str,
-    what: str,
-    where: str,
-) -> tuple[float | None, float, list[dict[str, float]], int]:
-    response = client.get(
-        f"{base}/{country}/search/1",
-        params={
-            "app_id": settings.adzuna_app_id,
-            "app_key": settings.adzuna_app_key,
-            "what": what,
-            "where": where,
-            "results_per_page": 50,
-            "sort_by": "date",
-        },
-    )
-    response.raise_for_status()
-    payload = response.json()
-    rows = payload.get("results") if isinstance(payload, dict) else []
-    if not isinstance(rows, list):
-        rows = []
-
-    points = _parse_adzuna_search_points(rows)
-    if len(points) >= 2:
-        first = max(points[0]["y"], 1.0)
-        last = points[-1]["y"]
-        vacancy_index = max(0.0, min(100.0, (last / first) * 50.0))
-    else:
-        vacancy_index = 50.0
-
-    salaries: list[float] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        low = _coerce_positive_float(row.get("salary_min"))
-        high = _coerce_positive_float(row.get("salary_max"))
-        if low and high:
-            salaries.append((low + high) / 2.0)
-        elif low:
-            salaries.append(low)
-        elif high:
-            salaries.append(high)
-    salary_avg = (sum(salaries) / len(salaries)) if salaries else None
-    return salary_avg, round(vacancy_index, 2), points, len(salaries)
-
-
 def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
     if not settings.adzuna_app_id or not settings.adzuna_app_key:
-        return MarketBenchmarks(
-            salary_avg=None,
-            vacancy_index=50.0,
-            trend_label="neutral",
-            volatility_points=_default_volatility_points(),
-            adzuna_status="not_configured",
-            data_freshness="estimated",
-        )
+        raise RuntimeError("Adzuna is not configured. Set ADZUNA_APP_ID and ADZUNA_APP_KEY.")
 
     what = (target_job or "software engineer").strip()
     where = (location or "united states").strip()
@@ -201,10 +99,6 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
     volatility_points: list[dict[str, float]] = []
     history_points_found = 0
     salary_points_found = 0
-    history_ok = False
-    histogram_ok = False
-    data_freshness = "live"
-    adzuna_status = "ok"
 
     with httpx.Client(timeout=timeout) as client:
         try:
@@ -219,18 +113,30 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
                 },
             )
             hist.raise_for_status()
-            rows = hist.json().get("month") or hist.json().get("results") or []
-            for idx, row in enumerate(rows):
-                count = float(row.get("count") or row.get("vacancies") or 0)
-                volatility_points.append({"x": float(idx), "y": count})
+            payload = hist.json()
+            rows = payload.get("month") or payload.get("results") or []
+
+            if isinstance(rows, dict):
+                # Adzuna history commonly returns {"YYYY-MM": value}; preserve chronological order.
+                for idx, (_, value) in enumerate(sorted(rows.items(), key=lambda item: item[0])):
+                    count = float(value or 0.0)
+                    volatility_points.append({"x": float(idx), "y": count})
+            elif isinstance(rows, list):
+                for idx, row in enumerate(rows):
+                    count = 0.0
+                    if isinstance(row, dict):
+                        count = float(row.get("count") or row.get("vacancies") or row.get("value") or 0)
+                    elif isinstance(row, (int, float)):
+                        count = float(row)
+                    volatility_points.append({"x": float(idx), "y": count})
+
             history_points_found = len(volatility_points)
             if len(volatility_points) >= 2:
                 first = max(volatility_points[0]["y"], 1.0)
                 last = volatility_points[-1]["y"]
                 vacancy_index = max(0.0, min(100.0, (last / first) * 50.0))
-            history_ok = True
         except Exception:
-            history_ok = False
+            raise RuntimeError("Adzuna history endpoint failed or timed out.")
 
         try:
             histo = client.get(
@@ -259,45 +165,12 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
                 if total > 0:
                     salary_avg = weighted_sum / total
                     salary_points_found = int(total)
-            histogram_ok = True
         except Exception:
-            histogram_ok = False
-
-        if not (history_ok and histogram_ok):
-            adzuna_status = "degraded"
-            data_freshness = "mixed"
-
-        if (not volatility_points) or salary_avg is None:
-            try:
-                fallback_salary, fallback_vacancy, fallback_points, fallback_salary_count = _fetch_search_fallback(
-                    client,
-                    base=base,
-                    country=country,
-                    what=what,
-                    where=where,
-                )
-                if not volatility_points and fallback_points:
-                    volatility_points = fallback_points
-                    vacancy_index = fallback_vacancy
-                    history_points_found = len(volatility_points)
-                if salary_avg is None and fallback_salary is not None:
-                    salary_avg = fallback_salary
-                    salary_points_found = fallback_salary_count
-                if adzuna_status == "ok":
-                    adzuna_status = "degraded"
-                if data_freshness == "live":
-                    data_freshness = "fallback_search"
-            except Exception:
-                pass
-
-    if not volatility_points:
-        volatility_points = _default_volatility_points()
-        vacancy_index = 50.0
-        if adzuna_status == "ok":
-            adzuna_status = "degraded"
-        data_freshness = "estimated"
+            raise RuntimeError("Adzuna histogram endpoint failed or timed out.")
 
     trend_label = "heating_up" if vacancy_index >= 60 else "cooling_down" if vacancy_index <= 40 else "neutral"
+    if not volatility_points:
+        raise RuntimeError("Adzuna returned no volatility points for this query.")
     return MarketBenchmarks(
         salary_avg=salary_avg,
         vacancy_index=round(vacancy_index, 2),
@@ -305,8 +178,6 @@ def fetch_adzuna_benchmarks(target_job: str, location: str) -> MarketBenchmarks:
         volatility_points=volatility_points,
         history_points_found=history_points_found,
         salary_points_found=salary_points_found,
-        adzuna_status=adzuna_status,
-        data_freshness=data_freshness,
     )
 
 
@@ -555,8 +426,6 @@ def compute_market_stress_test(
     required_skills = fetch_careeronestop_skills(target_job)
     verified_skill_names = _load_verified_skill_names(db, user_id)
     benchmarks = fetch_adzuna_benchmarks(target_job, location)
-    provider_status["adzuna"] = benchmarks.adzuna_status
-    data_freshness = benchmarks.data_freshness
 
     if required_skills:
         overlap_count = len({skill for skill in required_skills if skill in verified_skill_names})

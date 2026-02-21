@@ -32,22 +32,20 @@ def _call_json_agent(system_prompt: str, payload: dict[str, Any]) -> dict[str, A
 
     response = _call_llm(
         system_prompt=system_prompt,
-        user_content=_safe_json(payload),
+        user_payload=json.dumps(payload),
         expect_json=True,
-        max_tokens=1200,
-        temperature=0.2,
     )
     if not response:
         if ai_strict_mode_enabled():
             raise RuntimeError("AI strict mode: agent returned no response.")
         return {}
 
-    try:
-        return _safe_json(response)
-    except Exception:
-        if ai_strict_mode_enabled():
-            raise RuntimeError("AI strict mode: agent returned invalid JSON.")
-        return {}
+    parsed = _safe_json(response)
+    if isinstance(parsed, dict):
+        return parsed
+    if ai_strict_mode_enabled():
+        raise RuntimeError("AI strict mode: agent returned invalid JSON.")
+    return {}
 
 
 def _as_list(value: Any) -> list[str]:
