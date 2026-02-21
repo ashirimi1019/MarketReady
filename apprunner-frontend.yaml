@@ -1,0 +1,13 @@
+version: 1.0
+runtime: DOCKER
+
+build:
+  context: frontend
+  dockerfile: frontend/Dockerfile
+  build-args:
+    NEXT_PUBLIC_API_BASE: $NEXT_PUBLIC_API_BASE
+
+run:
+  network:
+    port: 3000
+    env: PORT
