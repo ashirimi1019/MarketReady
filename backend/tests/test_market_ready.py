@@ -90,7 +90,7 @@ class TestAIEndpoints:
                 pytest.skip("No auth token available")
 
     def _headers(self):
-        return {"Authorization": f"Bearer {auth_token_store['token']}"}
+        return {"X-Auth-Token": auth_token_store["token"]}
 
     def test_market_stress_test(self):
         r = requests.post(
