@@ -6,6 +6,91 @@ import { apiGet, apiSend, API_BASE, getAuthHeaders } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { ChecklistItem, Proof, StorageMeta, Readiness, EvidenceMapResponse } from "@/types/api";
 
+const PROFICIENCY_LEVELS = [
+  { value: "beginner", label: "Beginner", desc: "Learning the basics", color: "#ffb300", weight: "50% credit" },
+  { value: "intermediate", label: "Intermediate", desc: "Working knowledge", color: "#3d6dff", weight: "75% credit" },
+  { value: "professional", label: "Professional", desc: "Production-ready", color: "#00c896", weight: "100% credit" },
+] as const;
+
+type ProficiencyValue = "beginner" | "intermediate" | "professional";
+
+function ProficiencySelector({
+  value,
+  onChange,
+  disabled,
+  itemId,
+}: {
+  value: ProficiencyValue;
+  onChange: (v: ProficiencyValue) => void;
+  disabled: boolean;
+  itemId: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-[color:var(--muted)]">My proficiency level</p>
+      <div className="grid grid-cols-3 gap-2">
+        {PROFICIENCY_LEVELS.map(lvl => (
+          <button
+            key={lvl.value}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(lvl.value)}
+            data-testid={`proficiency-${lvl.value}-${itemId}`}
+            className="relative flex flex-col items-center rounded-xl border p-3 text-center transition-all"
+            style={{
+              borderColor: value === lvl.value ? lvl.color : "var(--border)",
+              background: value === lvl.value ? `${lvl.color}12` : "transparent",
+              cursor: disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            <span className="text-sm font-semibold" style={{ color: value === lvl.value ? lvl.color : "var(--muted)" }}>
+              {lvl.label}
+            </span>
+            <span className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>{lvl.weight}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VerificationBadge({ status, reviewNote }: { status: string; reviewNote?: string | null }) {
+  if (status === "verified") return (
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-semibold"
+      style={{ background: "rgba(0,200,150,0.12)", color: "#00c896" }}
+      data-testid="verification-badge-verified">
+      <span>✓</span> AI Verified
+    </span>
+  );
+  if (status === "rejected") return (
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-semibold"
+      style={{ background: "rgba(255,59,48,0.12)", color: "#ff3b30" }}
+      title={reviewNote || ""}
+      data-testid="verification-badge-rejected">
+      ✗ Not Verified
+    </span>
+  );
+  if (status === "submitted" || status === "needs_more_evidence") return (
+    <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full font-semibold"
+      style={{ background: "rgba(255,179,0,0.12)", color: "#ffb300" }}
+      data-testid="verification-badge-pending">
+      <span className="h-2 w-2 rounded-full bg-[#ffb300] animate-pulse" />
+      AI Reviewing...
+    </span>
+  );
+  return null;
+}
+
+function ProficiencyBadge({ level }: { level: string }) {
+  const lvl = PROFICIENCY_LEVELS.find(l => l.value === level) || PROFICIENCY_LEVELS[1];
+  return (
+    <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+      style={{ background: `${lvl.color}18`, color: lvl.color }}>
+      {lvl.label}
+    </span>
+  );
+}
+
 function ChecklistPageContent() {
   const { username, isLoggedIn } = useSession();
   const searchParams = useSearchParams();
@@ -14,6 +99,7 @@ function ChecklistPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [proofType, setProofType] = useState<Record<string, string>>({});
   const [proofFile, setProofFile] = useState<Record<string, File | null>>({});
+  const [proficiency, setProficiency] = useState<Record<string, ProficiencyValue>>({});
   const [proofsByItem, setProofsByItem] = useState<Record<string, Proof[]>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -38,12 +124,8 @@ function ChecklistPageContent() {
       );
       return hasOnlyResumeMatches ? "satisfied by resume upload" : "complete";
     }
-    if (proofs.some((proof) => proof.status === "submitted")) {
-      return "waiting for verification";
-    }
-    if (proofs.some((proof) => proof.status === "needs_more_evidence")) {
-      return "needs more evidence";
-    }
+    if (proofs.some((proof) => proof.status === "submitted")) return "AI reviewing...";
+    if (proofs.some((proof) => proof.status === "needs_more_evidence")) return "needs more evidence";
     if (proofs.some((proof) => proof.status === "rejected")) return "rejected";
     return fallback || "submitted";
   };
@@ -51,6 +133,20 @@ function ChecklistPageContent() {
   const prettyProofType = (proofTypeValue: string) => {
     if (proofTypeValue === "resume_upload_match") return "resume upload match";
     return proofTypeValue.replace(/_/g, " ");
+  };
+
+  const loadProofs = () => {
+    if (!isLoggedIn) return;
+    apiGet<Proof[]>("/user/proofs", headers)
+      .then((proofs) => {
+        const grouped: Record<string, Proof[]> = {};
+        proofs.forEach((proof) => {
+          if (!grouped[proof.checklist_item_id]) grouped[proof.checklist_item_id] = [];
+          grouped[proof.checklist_item_id].push(proof);
+        });
+        setProofsByItem(grouped);
+      })
+      .catch(() => setProofsByItem({}));
   };
 
   useEffect(() => {
@@ -63,457 +159,338 @@ function ChecklistPageContent() {
   useEffect(() => {
     if (!focusItemId) return;
     const target = document.getElementById(`checklist-${focusItemId}`);
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusItemId, items.length]);
 
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    apiGet<Proof[]>("/user/proofs", headers)
-      .then((proofs) => {
-        const grouped: Record<string, Proof[]> = {};
-        proofs.forEach((proof) => {
-          if (!grouped[proof.checklist_item_id]) {
-            grouped[proof.checklist_item_id] = [];
-          }
-          grouped[proof.checklist_item_id].push(proof);
-        });
-        setProofsByItem(grouped);
-      })
-      .catch(() => setProofsByItem({}));
-  }, [headers, isLoggedIn]);
+  useEffect(() => { loadProofs(); }, [headers, isLoggedIn]);
 
   useEffect(() => {
     apiGet<StorageMeta>("/meta/storage")
       .then(setStorageMeta)
-      .catch(() =>
-        setStorageMeta({
-          s3_enabled: false,
-          local_enabled: true,
-        })
-      );
+      .catch(() => setStorageMeta({ s3_enabled: false, local_enabled: true }));
   }, []);
 
-  const submitProof = async (
-    item: ChecklistItem,
-    options: { selfAttested?: boolean } = {}
-  ) => {
-    if (!isLoggedIn) {
-      setMessage("Please log in first.");
-      return;
-    }
+  const submitProof = async (item: ChecklistItem, options: { selfAttested?: boolean } = {}) => {
+    if (!isLoggedIn) { setMessage("Please log in first."); return; }
     const allowedProofTypes = item.allowed_proof_types ?? [];
     const selectedType = proofType[item.id] || allowedProofTypes[0];
     const file = proofFile[item.id];
     const requiresDocumentUpload = isCertificateProofType(selectedType || "");
-    if (!selectedType) {
-      setMessage("Select a proof type.");
-      return;
-    }
-    if (requiresDocumentUpload && !file) {
-      setMessage("Certificate proof requires document upload.");
-      return;
-    }
-    if (!requiresDocumentUpload && !options.selfAttested) {
-      setMessage("For non-certificate items, use the Yes self-attestation button.");
-      return;
-    }
+    const selectedProficiency: ProficiencyValue = proficiency[item.id] || "intermediate";
+
+    if (!selectedType) { setMessage("Select a proof type."); return; }
+    if (requiresDocumentUpload && !file) { setMessage("Certificate proof requires document upload."); return; }
+    if (!requiresDocumentUpload && !options.selfAttested) { setMessage("Use the proficiency button to mark this item."); return; }
+
     setSaving(item.id);
     setMessage(null);
     try {
-      let proofLocation = requiresDocumentUpload ? "" : "self_attested://yes";
-      let storageKey: string | null = null;
+      let fileUrl = "";
       if (requiresDocumentUpload && file) {
-        const fileContentType = file.type || "application/octet-stream";
-        const useS3 = storageMeta?.s3_enabled;
-        if (useS3) {
-          try {
-            const presign = await apiSend<{
-              upload_url: string;
-              file_url: string;
-              key: string;
-            }>("/user/proofs/presign", {
-              method: "POST",
-              headers: {
-                ...headers,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                filename: file.name,
-                content_type: fileContentType,
-              }),
-            });
-
-            const upload = await fetch(presign.upload_url, {
-              method: "PUT",
-              headers: {
-                "Content-Type": fileContentType,
-              },
-              body: file,
-            });
-            if (!upload.ok) {
-              throw new Error("S3 upload failed.");
-            }
-            proofLocation = presign.file_url;
-            storageKey = presign.key ?? null;
-          } catch (err) {
-            if (!storageMeta?.local_enabled) {
-              throw err;
-            }
-            const form = new FormData();
-            form.append("file", file);
-            const upload = await fetch(`${API_BASE}/user/proofs/upload`, {
-              method: "POST",
-              headers: getAuthHeaders(headers),
-              body: form,
-            });
-            if (!upload.ok) {
-              throw new Error("Local upload failed.");
-            }
-            const uploaded = await upload.json();
-            proofLocation = uploaded.file_url;
-          }
+        const s3Enabled = storageMeta?.s3_enabled ?? false;
+        if (s3Enabled) {
+          const { upload_url, s3_key } = await apiSend<{ upload_url: string; s3_key: string }>(
+            "/user/proofs/presign",
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, content_type: file.type }) }
+          );
+          await fetch(upload_url, { method: "PUT", body: file });
+          fileUrl = s3_key;
         } else {
-          const form = new FormData();
-          form.append("file", file);
-          const upload = await fetch(`${API_BASE}/user/proofs/upload`, {
+          const fd = new FormData();
+          fd.append("file", file);
+          const uploadRes = await fetch(`${API_BASE}/user/proofs/upload`, {
             method: "POST",
             headers: getAuthHeaders(headers),
-            body: form,
+            body: fd,
           });
-          if (!upload.ok) {
-            throw new Error("Local upload failed.");
-          }
-          const uploaded = await upload.json();
-          proofLocation = uploaded.file_url;
+          if (!uploadRes.ok) throw new Error("File upload failed");
+          const { file_url } = await uploadRes.json();
+          fileUrl = file_url;
         }
       }
 
-      if (!proofLocation) {
-        throw new Error("Could not determine proof file location.");
-      }
-
-      const created = await apiSend<Proof>("/user/proofs", {
+      const proof = await apiSend<Proof>("/user/proofs", {
         method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
           checklist_item_id: item.id,
           proof_type: selectedType,
-          url: proofLocation,
-          metadata: {
-            ...(requiresDocumentUpload && file
-              ? {
-                  filename: file.name,
-                  size: file.size,
-                  content_type: file.type,
-                  storage_key: storageKey,
-                }
-              : {}),
-            ...(requiresDocumentUpload
-              ? {}
-              : {
-                  self_attested: true,
-                  attestation: "yes",
-                }),
-          },
+          url: requiresDocumentUpload ? fileUrl : "self_attested://yes",
+          proficiency_level: selectedProficiency,
+          metadata: { filename: file?.name },
         }),
       });
-      const proofs = await apiGet<Proof[]>("/user/proofs", headers);
-      const grouped: Record<string, Proof[]> = {};
-      proofs.forEach((proof) => {
-        if (!grouped[proof.checklist_item_id]) {
-          grouped[proof.checklist_item_id] = [];
-        }
-        grouped[proof.checklist_item_id].push(proof);
-      });
-      setProofsByItem(grouped);
-      const updated = await apiGet<ChecklistItem[]>("/user/checklist", headers);
-      setItems(updated);
-      const readiness = await apiGet<Readiness>("/user/readiness", headers).catch(
-        () => null
-      );
-      setReevaluation(readiness);
-      if (!requiresDocumentUpload && created.status === "verified") {
-        setMessage("Marked complete by self-attestation. Readiness updated.");
-      } else if (created.status === "verified") {
-        setMessage("Submission verified by OpenAI and profile needs were re-evaluated.");
-      } else if (created.status === "needs_more_evidence") {
-        setMessage("Submission recorded. OpenAI needs more evidence for verification.");
-      } else if (created.status === "rejected") {
-        setMessage("Submission recorded, but OpenAI rejected it for this requirement.");
+
+      const isCert = requiresDocumentUpload;
+      if (isCert && proof.status === "verified") {
+        setMessage(`Certificate AI-verified! Proficiency: ${selectedProficiency}. MRI score updated.`);
+      } else if (isCert) {
+        setMessage(`Certificate submitted for AI verification. Status: ${proof.status}. Check back soon.`);
       } else {
-        setMessage("Submission recorded and readiness re-evaluated.");
+        setMessage(`Proficiency set to ${selectedProficiency}. MRI score updated.`);
       }
-      setProofFile((prev) => ({ ...prev, [item.id]: null }));
+
+      loadProofs();
+      // Re-evaluate readiness
+      apiGet<Readiness>("/user/readiness", headers).then(setReevaluation).catch(() => {});
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed to submit proof.");
+      setMessage(err instanceof Error ? err.message : "Submission failed. Please try again.");
     } finally {
       setSaving(null);
     }
   };
 
   const runEvidenceMapper = async () => {
-    if (!isLoggedIn) {
-      setMappingMessage("Please log in first.");
-      return;
-    }
+    if (!isLoggedIn) return;
     setMappingEvidence(true);
     setMappingMessage(null);
     try {
-      const result = await apiSend<EvidenceMapResponse>("/user/ai/evidence-map", {
+      const result = await apiSend<EvidenceMapResponse>("/ai/evidence-map", {
         method: "POST",
-        headers,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
       });
-      const [updatedItems, updatedProofs, readiness] = await Promise.all([
-        apiGet<ChecklistItem[]>("/user/checklist", headers).catch(() => null),
-        apiGet<Proof[]>("/user/proofs", headers).catch(() => null),
-        apiGet<Readiness>("/user/readiness", headers).catch(() => null),
-      ]);
-      if (updatedItems) {
-        setItems(updatedItems);
-      }
-      if (updatedProofs) {
-        const grouped: Record<string, Proof[]> = {};
-        updatedProofs.forEach((proof) => {
-          if (!grouped[proof.checklist_item_id]) {
-            grouped[proof.checklist_item_id] = [];
-          }
-          grouped[proof.checklist_item_id].push(proof);
-        });
-        setProofsByItem(grouped);
-      }
-      setReevaluation(readiness);
-      if (result.matched_count > 0) {
-        setMappingMessage(
-          `OpenAI mapped ${result.matched_count} requirement(s) from uploaded evidence.`
-        );
-      } else {
-        setMappingMessage(
-          "No additional requirements were mapped from current evidence."
-        );
-      }
+      const mapped = result?.mapped_count ?? 0;
+      setMappingMessage(mapped > 0 ? `OpenAI Evidence Mapper applied: ${mapped} requirement(s) auto-satisfied from your evidence context.` : "No new requirements could be auto-satisfied. Keep adding evidence.");
+      loadProofs();
     } catch (err) {
-      setMappingMessage(
-        err instanceof Error ? err.message : "Failed to run OpenAI evidence mapper."
-      );
+      setMappingMessage(err instanceof Error ? err.message : "Failed to run OpenAI evidence mapper.");
     } finally {
       setMappingEvidence(false);
     }
   };
 
-  return (
-    <section className="panel">
-      <h2 className="text-3xl font-semibold">Checklist</h2>
-      <p className="mt-2 text-[color:var(--muted)]">
-        Mark non-certificate items as done with Yes/No attestation. Certificates require upload + OpenAI verification.
-      </p>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          className="cta cta-secondary text-base"
-          onClick={runEvidenceMapper}
-          disabled={!isLoggedIn || mappingEvidence}
-        >
-          {mappingEvidence ? "Mapping Evidence..." : "Run OpenAI Evidence Mapper"}
-        </button>
-        {mappingMessage && (
-          <span className="text-sm text-[color:var(--muted)]">
-            {mappingMessage}
-          </span>
-        )}
-      </div>
-      {!isLoggedIn && (
-        <p className="mt-4 text-sm text-[color:var(--accent-2)]">
-          Please log in to view your checklist.
-        </p>
-      )}
-      {message && (
-        <p className="mt-4 text-sm text-[color:var(--accent-2)]">{message}</p>
-      )}
-      {error && (
-        <p className="mt-4 text-sm text-[color:var(--accent-2)]">{error}</p>
-      )}
-      {reevaluation && (
-        <div className="mt-4 rounded-xl border border-[color:var(--border)] p-4 text-sm text-[color:var(--muted)]">
-          <div className="font-medium text-white">
-            Profile re-evaluated: readiness {reevaluation.score.toFixed(0)}/100 (
-            {reevaluation.band})
-          </div>
-          <div className="mt-1">
-            Further needs:{" "}
-            {reevaluation.next_actions?.length
-              ? reevaluation.next_actions.slice(0, 3).join(" • ")
-              : "No immediate actions."}
-          </div>
-        </div>
-      )}
-      <div className="mt-8 grid gap-4">
-        {items.map((item) => {
-          const allowedProofTypes = item.allowed_proof_types ?? [];
-          const selectedType = proofType[item.id] ?? allowedProofTypes[0] ?? "";
-          const requiresDocumentUpload = isCertificateProofType(selectedType);
-          return (
-            <div
-              key={item.id}
-              id={`checklist-${item.id}`}
-              className={`flex flex-col gap-3 rounded-2xl border p-6 md:flex-row md:items-center md:justify-between ${
-                focusItemId === item.id
-                  ? "border-[color:var(--accent-2)] shadow-[0_0_20px_rgba(61,214,208,0.3)]"
-                  : "border-[color:var(--border)]"
-              }`}
-            >
-            <div>
-              {(() => {
-                const proofs = proofsByItem[item.id] ?? [];
-                const displayStatus = getStatusLabel(proofs, item.status);
-                return (
-                  <span className="chip mb-2 inline-flex">
-                    {displayStatus}
-                  </span>
-                );
-              })()}
-              <p className="text-lg font-semibold">{item.title}</p>
-              <span className="text-sm text-[color:var(--muted)]">
+  const nonNegotiables = items.filter(i => i.tier === "non_negotiable");
+  const strongSignals = items.filter(i => i.tier === "strong_signal");
+  const others = items.filter(i => i.tier !== "non_negotiable" && i.tier !== "strong_signal");
+
+  const renderItem = (item: ChecklistItem) => {
+    const allowedProofTypes = item.allowed_proof_types ?? [];
+    const selectedType = proofType[item.id] ?? allowedProofTypes[0] ?? "";
+    const requiresDocumentUpload = isCertificateProofType(selectedType);
+    const itemProofs = proofsByItem[item.id] ?? [];
+    const displayStatus = getStatusLabel(itemProofs);
+    const bestProof = itemProofs.find(p => p.status === "verified") || itemProofs[0];
+    const selectedProficiency: ProficiencyValue = proficiency[item.id] || "intermediate";
+    const isNonNeg = item.tier === "non_negotiable";
+
+    const statusColors: Record<string, string> = {
+      complete: "#00c896",
+      "AI reviewing...": "#ffb300",
+      "needs more evidence": "#ff7b1a",
+      rejected: "#ff3b30",
+      "satisfied by resume upload": "#3d6dff",
+      incomplete: "var(--muted)",
+    };
+
+    return (
+      <div
+        key={item.id}
+        id={`checklist-${item.id}`}
+        className="rounded-2xl border p-5 transition-all"
+        style={{
+          borderColor: focusItemId === item.id ? "var(--primary)" : displayStatus === "complete" ? "rgba(0,200,150,0.2)" : "var(--border)",
+          background: displayStatus === "complete" ? "rgba(0,200,150,0.03)" : "transparent",
+          boxShadow: focusItemId === item.id ? "0 0 20px rgba(61,109,255,0.2)" : undefined,
+        }}
+        data-testid={`checklist-item-${item.id}`}
+      >
+        <div className="flex flex-col md:flex-row md:items-start gap-5">
+          {/* Left: item info */}
+          <div className="flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                style={{ background: `${statusColors[displayStatus] || "var(--muted)"}18`, color: statusColors[displayStatus] || "var(--muted)" }}>
+                {displayStatus}
+              </span>
+              {isNonNeg && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full border border-[rgba(255,59,48,0.3)] text-[color:var(--danger)]">
+                  Required
+                </span>
+              )}
+              <span className="text-[10px] text-[color:var(--muted)] px-2 py-0.5 rounded-full border border-[color:var(--border)]">
                 {(item.tier ?? "core").replace("_", " ")}
               </span>
-              {proofsByItem[item.id]?.[0] && (
-                <div className="mt-3 text-sm text-[color:var(--muted)]">
-                  <div>
-                    Saved proof ({prettyProofType(proofsByItem[item.id][0].proof_type)},{" "}
-                    {proofsByItem[item.id][0].status})
-                  </div>
-                  {proofsByItem[item.id][0].review_note && (
-                    <div className="mt-1 text-[color:var(--accent-2)]">
-                      Admin note: {proofsByItem[item.id][0].review_note}
-                    </div>
-                  )}
-                  <a
-                    className="text-[color:var(--accent-2)] underline"
-                    href={
-                      (proofsByItem[item.id][0].view_url ||
-                        proofsByItem[item.id][0].url).startsWith("http")
-                        ? proofsByItem[item.id][0].view_url ||
-                          proofsByItem[item.id][0].url
-                        : `${API_BASE}${proofsByItem[item.id][0].view_url || proofsByItem[item.id][0].url}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {proofsByItem[item.id][0].url}
-                  </a>
-                </div>
-              )}
+              {bestProof && <ProficiencyBadge level={bestProof.proficiency_level || "intermediate"} />}
             </div>
-            <div className="flex flex-1 flex-col gap-3 md:max-w-md">
-              <label
-                htmlFor={`proof-type-${item.id}`}
-                className="text-sm text-[color:var(--muted)]"
-              >
-                Proof type
-              </label>
+            <p className="text-base font-semibold">{item.title}</p>
+
+            {/* Existing proof info */}
+            {bestProof && (
+              <div className="mt-2 space-y-1">
+                <VerificationBadge status={bestProof.status} reviewNote={bestProof.review_note} />
+                {bestProof.review_note && bestProof.status !== "verified" && (
+                  <p className="text-xs text-[color:var(--muted)]">{bestProof.review_note}</p>
+                )}
+                {bestProof.url && !bestProof.url.startsWith("self_attested") && (
+                  <a
+                    className="text-xs text-[color:var(--primary)] underline"
+                    href={(bestProof.view_url || bestProof.url).startsWith("http") ? bestProof.view_url || bestProof.url : `${API_BASE}${bestProof.view_url || bestProof.url}`}
+                    target="_blank" rel="noreferrer"
+                  >
+                    View certificate
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: submission controls */}
+          <div className="flex flex-col gap-3 md:w-72">
+            <ProficiencySelector
+              value={selectedProficiency}
+              onChange={v => setProficiency(prev => ({ ...prev, [item.id]: v }))}
+              disabled={!isLoggedIn || saving === item.id}
+              itemId={item.id}
+            />
+
+            {allowedProofTypes.length > 1 && (
               <select
-                id={`proof-type-${item.id}`}
-                className="rounded-lg border border-[color:var(--border)] p-3 text-base"
+                className="rounded-lg border border-[color:var(--border)] bg-[color:var(--input-bg)] px-3 py-2 text-sm"
                 value={selectedType}
                 title={`Proof type for ${item.title}`}
                 aria-label={`Proof type for ${item.title}`}
-                onChange={(event) => {
-                  const nextType = event.target.value;
-                  setProofType((prev) => ({ ...prev, [item.id]: nextType }));
-                  if (!isCertificateProofType(nextType)) {
-                    setProofFile((prev) => ({ ...prev, [item.id]: null }));
-                  }
+                onChange={e => {
+                  setProofType(prev => ({ ...prev, [item.id]: e.target.value }));
+                  if (!isCertificateProofType(e.target.value)) setProofFile(prev => ({ ...prev, [item.id]: null }));
                 }}
                 disabled={!isLoggedIn}
+                data-testid={`proof-type-select-${item.id}`}
               >
-                {(allowedProofTypes.length
-                  ? allowedProofTypes
-                  : ["repo_url"]).map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
+                {allowedProofTypes.map(type => (
+                  <option key={type} value={type}>{prettyProofType(type)}</option>
                 ))}
               </select>
-              {requiresDocumentUpload ? (
-                <>
-                  <div className="rounded-lg border border-dashed border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]">
-                    Certificate proofs require file upload and OpenAI authenticity verification.
+            )}
+
+            {requiresDocumentUpload ? (
+              <div className="space-y-2">
+                {isNonNeg && (
+                  <div className="text-xs rounded-lg p-2 border border-[rgba(61,109,255,0.2)] bg-[rgba(61,109,255,0.05)]">
+                    <span className="font-semibold text-[color:var(--primary)]">Required: </span>
+                    <span className="text-[color:var(--muted)]">AI will verify this certificate automatically</span>
                   </div>
-                  <label
-                    htmlFor={`certificate-upload-${item.id}`}
-                    className="text-sm text-[color:var(--muted)]"
-                  >
-                    Upload certificate document
-                  </label>
+                )}
+                <label className="text-xs text-[color:var(--muted)]">
+                  Upload certificate
                   <input
                     id={`certificate-upload-${item.id}`}
                     type="file"
-                    className="rounded-lg border border-[color:var(--border)] p-3 text-base"
-                    title={`Upload certificate file for ${item.title}`}
-                    aria-label={`Upload certificate file for ${item.title}`}
-                    onChange={(event) =>
-                      setProofFile((prev) => ({
-                        ...prev,
-                        [item.id]: event.target.files?.[0] ?? null,
-                      }))
-                    }
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    className="mt-1 w-full rounded-lg border border-[color:var(--border)] p-2 text-sm"
+                    title={`Upload certificate for ${item.title}`}
+                    aria-label={`Upload certificate for ${item.title}`}
+                    onChange={e => setProofFile(prev => ({ ...prev, [item.id]: e.target.files?.[0] ?? null }))}
                     disabled={!isLoggedIn}
+                    data-testid={`cert-upload-${item.id}`}
                   />
-                  <button
-                    className="cta cta-secondary text-base"
-                    onClick={() => submitProof(item)}
-                    disabled={!isLoggedIn || saving === item.id}
-                  >
-                    {saving === item.id ? "Submitting..." : "Submit Certificate"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="rounded-lg border border-dashed border-[color:var(--border)] p-3 text-sm text-[color:var(--muted)]">
-                    Non-certificate items are self-attested. Click Yes if you have completed this requirement.
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      className="cta cta-secondary text-base"
-                      onClick={() => submitProof(item, { selfAttested: true })}
-                      disabled={!isLoggedIn || saving === item.id}
-                    >
-                      {saving === item.id ? "Saving..." : "Yes, I completed this"}
-                    </button>
-                    <button
-                      className="cta cta-secondary text-base"
-                      onClick={() =>
-                        setMessage("No problem. Keep this item open and complete it later.")
-                      }
-                      disabled={!isLoggedIn || saving === item.id}
-                    >
-                      No, not yet
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-            </div>
-          );
-        })}
+                </label>
+                <button
+                  className="cta cta-primary w-full text-sm"
+                  onClick={() => submitProof(item)}
+                  disabled={!isLoggedIn || saving === item.id}
+                  data-testid={`submit-cert-btn-${item.id}`}
+                >
+                  {saving === item.id ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-3 w-3 rounded-full border border-white border-t-transparent animate-spin" />
+                      AI Verifying...
+                    </span>
+                  ) : "Submit & AI Verify"}
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  className="cta cta-primary text-sm"
+                  onClick={() => submitProof(item, { selfAttested: true })}
+                  disabled={!isLoggedIn || saving === item.id}
+                  data-testid={`mark-proficient-btn-${item.id}`}
+                >
+                  {saving === item.id ? "Saving..." : `Mark as ${PROFICIENCY_LEVELS.find(l => l.value === selectedProficiency)?.label}`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+    );
+  };
+
+  const sectionGroups = [
+    { label: "Required (Non-Negotiable)", items: nonNegotiables, color: "#ff3b30" },
+    { label: "Strong Signals", items: strongSignals, color: "#ffb300" },
+    { label: "Core Skills", items: others, color: "var(--muted)" },
+  ].filter(g => g.items.length > 0);
+
+  return (
+    <section className="panel space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Skills Checklist</h2>
+        <p className="mt-1 text-[color:var(--muted)] text-sm">
+          Set your proficiency level for each skill. Non-negotiable certificates are AI-verified for authenticity.
+        </p>
+      </div>
+
+      {/* Proficiency legend */}
+      <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4">
+        <p className="text-xs font-semibold text-[color:var(--muted)] mb-3 uppercase tracking-wider">How Proficiency Affects Your MRI Score</p>
+        <div className="grid grid-cols-3 gap-3">
+          {PROFICIENCY_LEVELS.map(lvl => (
+            <div key={lvl.value} className="text-center p-2 rounded-xl border border-[color:var(--border)]">
+              <p className="font-semibold text-sm" style={{ color: lvl.color }}>{lvl.label}</p>
+              <p className="text-xs text-[color:var(--muted)] mt-0.5">{lvl.weight}</p>
+              <p className="text-[10px] text-[color:var(--muted)] mt-0.5">{lvl.desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-[color:var(--muted)] mt-3">
+          AI-verified certificates on Required items get an additional <span className="text-[color:var(--success)] font-semibold">15% bonus</span>.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="cta cta-secondary text-sm" onClick={runEvidenceMapper} disabled={!isLoggedIn || mappingEvidence} data-testid="evidence-mapper-btn">
+          {mappingEvidence ? "Mapping Evidence..." : "Run OpenAI Evidence Mapper"}
+        </button>
+        {mappingMessage && <span className="text-sm text-[color:var(--muted)]">{mappingMessage}</span>}
+      </div>
+
+      {!isLoggedIn && <p className="text-sm text-[color:var(--accent-2)]">Please log in to view your checklist.</p>}
+      {message && <p className="text-sm text-[color:var(--success)] rounded-xl border border-[rgba(0,200,150,0.2)] bg-[rgba(0,200,150,0.06)] px-4 py-2" data-testid="checklist-message">{message}</p>}
+      {error && <p className="text-sm text-[color:var(--danger)]">{error}</p>}
+
+      {reevaluation && (
+        <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
+          <div className="font-semibold">MRI recalculated: {reevaluation.score.toFixed(0)}/100 ({reevaluation.band})</div>
+          {reevaluation.next_actions?.length ? (
+            <div className="mt-1 text-[color:var(--muted)]">Next: {reevaluation.next_actions.slice(0, 2).join(" • ")}</div>
+          ) : null}
+        </div>
+      )}
+
+      {sectionGroups.map(group => (
+        <div key={group.label} className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full" style={{ background: group.color }} />
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-[color:var(--muted)]">{group.label}</h3>
+            <span className="text-xs text-[color:var(--muted)]">({group.items.length})</span>
+          </div>
+          {group.items.map(renderItem)}
+        </div>
+      ))}
     </section>
   );
 }
 
 export default function StudentChecklistPage() {
   return (
-    <Suspense
-      fallback={
-        <section className="panel">
-          <h2 className="text-3xl font-semibold">Checklist</h2>
-          <p className="mt-2 text-[color:var(--muted)]">Loading checklist...</p>
-        </section>
-      }
-    >
+    <Suspense fallback={
+      <section className="panel">
+        <h2 className="text-3xl font-bold">Skills Checklist</h2>
+        <p className="mt-2 text-[color:var(--muted)]">Loading...</p>
+      </section>
+    }>
       <ChecklistPageContent />
     </Suspense>
   );
