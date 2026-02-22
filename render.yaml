@@ -9,7 +9,9 @@ services:
     healthCheckPath: /meta/health
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: marketready-db
+          property: connectionString
       - key: ADMIN_TOKEN
         sync: false
       - key: AUTH_SECRET
@@ -17,6 +19,20 @@ services:
       - key: CORS_ORIGINS
         sync: false
       - key: AI_ENABLED
-        value: "false"
+        value: "true"
       - key: AUTH_REQUIRE_EMAIL_VERIFICATION
         value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: PUBLIC_APP_BASE_URL
+        sync: false
+
+databases:
+  - name: marketready-db
+    plan: free
+    databaseName: market_pathways
+    user: market_admin
