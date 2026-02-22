@@ -1,0 +1,26 @@
+version: 1.0
+runtime: DOCKER
+
+build:
+  context: frontend
+  dockerfile: Dockerfile
+  buildArgs:
+    - name: NEXT_PUBLIC_API_BASE
+      value: ""
+
+run:
+  network:
+    port: 3000
+    env: PORT
+  env:
+    - name: PORT
+      value: "3000"
+    - name: NODE_ENV
+      value: "production"
+  healthcheck:
+    path: /
+    protocol: HTTP
+    interval: 15
+    timeout: 10
+    healthy-threshold: 2
+    unhealthy-threshold: 5
